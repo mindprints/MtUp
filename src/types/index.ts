@@ -41,9 +41,56 @@ export type Availability = {
   timeSlots?: string[]; // ["12:00", "12:30", "13:00"] for events
 };
 
+export type DecisionDimension = 'time' | 'place' | 'requirement';
+
+export type VotingMode = 'single' | 'multi' | 'ranked';
+
+export type DecisionStatus = 'open' | 'pending_confirmation' | 'confirmed';
+
+export type ProposalDecisionConfig = {
+  proposalId: string;
+  dimension: DecisionDimension;
+  mode: VotingMode;
+  status: DecisionStatus;
+};
+
+export type DecisionOption = {
+  id: string;
+  proposalId: string;
+  dimension: DecisionDimension;
+  label: string;
+  createdBy: string;
+  createdAt: string;
+  metadata?: Record<string, string>;
+};
+
+export type DecisionVote = {
+  id: string;
+  proposalId: string;
+  dimension: DecisionDimension;
+  userId: string;
+  rankedOptionIds?: string[];
+  selectedOptionIds?: string[];
+  updatedAt: string;
+};
+
+export type DecisionConfirmation = {
+  id: string;
+  proposalId: string;
+  dimension: DecisionDimension;
+  optionIds: string[];
+  confirmedBy: string;
+  confirmedAt: string;
+  note?: string;
+};
+
 export type AppData = {
   users: User[];
   proposals: Proposal[];
   availabilities: Availability[];
+  decisionConfigs: ProposalDecisionConfig[];
+  decisionOptions: DecisionOption[];
+  decisionVotes: DecisionVote[];
+  decisionConfirmations: DecisionConfirmation[];
   currentUserId: string | null;
 };

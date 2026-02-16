@@ -36,12 +36,12 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         />
 
         {/* Modal */}
-        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 z-10">
+        <div className="relative bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full p-6 z-10 border border-transparent dark:border-slate-700">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-slate-100">{title}</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 text-2xl leading-none"
             >
               ×
             </button>

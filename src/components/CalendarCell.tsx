@@ -64,7 +64,6 @@ export function CalendarCell({
         .map(([proposalId, users]) => ({
           proposal: proposals.find((p) => p.id === proposalId),
           users: Array.from(users),
-          userCount: users.size,
         }))
         .filter((item) => item.proposal)
         .slice(0, 6) // Max 6 proposals per cell
@@ -73,10 +72,10 @@ export function CalendarCell({
   return (
     <div
       className={`
-        relative min-h-[100px] border border-gray-200 p-2 select-none transition-colors
-        ${!isCurrentMonth ? 'bg-gray-50 text-gray-400' : 'bg-white'}
+        relative min-h-[100px] border border-gray-200 dark:border-slate-700 p-2 select-none transition-colors
+        ${!isCurrentMonth ? 'bg-gray-50 text-gray-400 dark:bg-slate-900 dark:text-slate-600' : 'bg-white dark:bg-slate-900'}
         ${today ? 'ring-2 ring-blue-500' : ''}
-        ${isPast ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}
+        ${isPast ? 'bg-gray-100 dark:bg-slate-800 opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800'}
       `}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
@@ -84,7 +83,7 @@ export function CalendarCell({
       onMouseUp={handleMouseUp}
       title={isPast ? 'Past date - cannot be scheduled' : ''}
     >
-      <div className={`text-sm font-medium ${today ? 'text-blue-600' : isPast ? 'text-gray-400 line-through' : ''}`}>
+      <div className={`text-sm font-medium ${today ? 'text-blue-600' : isPast ? 'text-gray-400 dark:text-slate-500 line-through' : 'dark:text-slate-100'}`}>
         {dayNumber}
       </div>
 
@@ -93,6 +92,7 @@ export function CalendarCell({
         <div className="mt-1 space-y-1">
           {proposalsWithUsers.map((item) => {
             const isCurrentUserMarked = item.users.some((u) => u.id === currentUser.id);
+            const otherUsers = item.users.filter((u) => u.id !== currentUser.id);
             return (
               <div
                 key={item.proposal!.id}
@@ -103,20 +103,18 @@ export function CalendarCell({
               >
                 <span className="text-lg leading-none">{item.proposal!.emoji}</span>
                 <div className="flex items-center gap-0.5">
-                  {item.users.slice(0, 3).map((user) => (
+                  {otherUsers.slice(0, 3).map((user) => (
                     <div
                       key={user.id}
-                      className={`w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-medium ${
-                        user.id === currentUser.id ? 'bg-blue-500 ring-1 ring-blue-300' : 'bg-gray-400'
-                      }`}
+                      className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-medium bg-gray-400"
                       title={user.name}
                     >
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                   ))}
-                  {item.userCount > 3 && (
-                    <span className="text-[10px] text-gray-500 ml-0.5">
-                      +{item.userCount - 3}
+                  {otherUsers.length > 3 && (
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 ml-0.5">
+                      +{otherUsers.length - 3}
                     </span>
                   )}
                 </div>

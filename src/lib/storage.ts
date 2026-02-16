@@ -1,4 +1,14 @@
-import type { AppData, User, Proposal, Availability } from '@/types';
+import type {
+  AppData,
+  User,
+  Proposal,
+  Availability,
+  ProposalDecisionConfig,
+  DecisionOption,
+  DecisionVote,
+  DecisionConfirmation,
+  DecisionDimension,
+} from '@/types';
 
 const STORAGE_KEY = 'schedule-app-data';
 
@@ -15,8 +25,27 @@ const INITIAL_DATA: AppData = {
   users: MOCK_USERS,
   proposals: [],
   availabilities: [],
+  decisionConfigs: [],
+  decisionOptions: [],
+  decisionVotes: [],
+  decisionConfirmations: [],
   currentUserId: null,
 };
+
+function normalizeData(rawData: unknown): AppData {
+  const candidate = rawData as Partial<AppData> | null;
+  return {
+    users: candidate?.users ?? INITIAL_DATA.users,
+    proposals: candidate?.proposals ?? [],
+    availabilities: candidate?.availabilities ?? [],
+    decisionConfigs: candidate?.decisionConfigs ?? [],
+    decisionOptions: candidate?.decisionOptions ?? [],
+    decisionVotes: candidate?.decisionVotes ?? [],
+    decisionConfirmations: candidate?.decisionConfirmations ?? [],
+    currentUserId:
+      candidate?.currentUserId === undefined ? null : candidate.currentUserId,
+  };
+}
 
 export const storage = {
   // Get all data from localStorage
@@ -26,7 +55,7 @@ export const storage = {
       this.setData(INITIAL_DATA);
       return INITIAL_DATA;
     }
-    return JSON.parse(stored);
+    return normalizeData(JSON.parse(stored));
   },
 
   // Set all data to localStorage
@@ -86,6 +115,18 @@ export const storage = {
     data.availabilities = data.availabilities.filter(
       (a) => a.proposalId !== proposalId
     );
+    data.decisionConfigs = data.decisionConfigs.filter(
+      (config) => config.proposalId !== proposalId
+    );
+    data.decisionOptions = data.decisionOptions.filter(
+      (option) => option.proposalId !== proposalId
+    );
+    data.decisionVotes = data.decisionVotes.filter(
+      (vote) => vote.proposalId !== proposalId
+    );
+    data.decisionConfirmations = data.decisionConfirmations.filter(
+      (confirmation) => confirmation.proposalId !== proposalId
+    );
     this.setData(data);
   },
 
@@ -135,6 +176,141 @@ export const storage = {
       (a) => !(a.userId === userId && a.proposalId === proposalId)
     );
     this.setData(data);
+  },
+
+  // Get decision config for a proposal and dimension
+  getDecisionConfig(
+    proposalId: string,
+    dimension: DecisionDimension
+  ): ProposalDecisionConfig | null {
+    const data = this.getData();
+    return (
+      data.decisionConfigs.find(
+        (config) =>
+          config.proposalId === proposalId && config.dimension === dimension
+      ) || null
+    );
+  },
+
+  // Add or update decision config
+  setDecisionConfig(config: ProposalDecisionConfig): void {
+    const data = this.getData();
+    const index = data.decisionConfigs.findIndex(
+      (existingConfig) =>
+        existingConfig.proposalId === config.proposalId &&
+        existingConfig.dimension === config.dimension
+    );
+    if (index !== -1) {
+      data.decisionConfigs[index] = config;
+    } else {
+      data.decisionConfigs.push(config);
+    }
+    this.setData(data);
+  },
+
+  // Get decision options for a proposal and dimension
+  getDecisionOptions(
+    proposalId: string,
+    dimension: DecisionDimension
+  ): DecisionOption[] {
+    const data = this.getData();
+    return data.decisionOptions.filter(
+      (option) =>
+        option.proposalId === proposalId && option.dimension === dimension
+    );
+  },
+
+  // Add decision option
+  addDecisionOption(option: DecisionOption): void {
+    const data = this.getData();
+    data.decisionOptions.push(option);
+    this.setData(data);
+  },
+
+  // Delete decision option
+  deleteDecisionOption(optionId: string): void {
+    const data = this.getData();
+    data.decisionOptions = data.decisionOptions.filter(
+      (option) => option.id !== optionId
+    );
+    data.decisionVotes = data.decisionVotes.map((vote) => ({
+      ...vote,
+      rankedOptionIds: vote.rankedOptionIds?.filter((id) => id !== optionId),
+      selectedOptionIds: vote.selectedOptionIds?.filter((id) => id !== optionId),
+    }));
+    data.decisionConfirmations = data.decisionConfirmations.map(
+      (confirmation) => ({
+        ...confirmation,
+        optionIds: confirmation.optionIds.filter((id) => id !== optionId),
+      })
+    );
+    this.setData(data);
+  },
+
+  // Get decision votes for a proposal and dimension
+  getDecisionVotes(
+    proposalId: string,
+    dimension: DecisionDimension
+  ): DecisionVote[] {
+    const data = this.getData();
+    return data.decisionVotes.filter(
+      (vote) => vote.proposalId === proposalId && vote.dimension === dimension
+    );
+  },
+
+  // Add or update decision vote for a user/proposal/dimension
+  setDecisionVote(vote: DecisionVote): void {
+    const data = this.getData();
+    const index = data.decisionVotes.findIndex(
+      (existingVote) =>
+        existingVote.userId === vote.userId &&
+        existingVote.proposalId === vote.proposalId &&
+        existingVote.dimension === vote.dimension
+    );
+    if (index !== -1) {
+      data.decisionVotes[index] = vote;
+    } else {
+      data.decisionVotes.push(vote);
+    }
+    this.setData(data);
+  },
+
+  // Delete decision vote for a user/proposal/dimension
+  deleteDecisionVote(
+    userId: string,
+    proposalId: string,
+    dimension: DecisionDimension
+  ): void {
+    const data = this.getData();
+    data.decisionVotes = data.decisionVotes.filter(
+      (vote) =>
+        !(
+          vote.userId === userId &&
+          vote.proposalId === proposalId &&
+          vote.dimension === dimension
+        )
+    );
+    this.setData(data);
+  },
+
+  // Add decision confirmation
+  addDecisionConfirmation(confirmation: DecisionConfirmation): void {
+    const data = this.getData();
+    data.decisionConfirmations.push(confirmation);
+    this.setData(data);
+  },
+
+  // Get decision confirmations for a proposal and dimension
+  getDecisionConfirmations(
+    proposalId: string,
+    dimension: DecisionDimension
+  ): DecisionConfirmation[] {
+    const data = this.getData();
+    return data.decisionConfirmations.filter(
+      (confirmation) =>
+        confirmation.proposalId === proposalId &&
+        confirmation.dimension === dimension
+    );
   },
 
   // Reset to initial data (for development)

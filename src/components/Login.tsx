@@ -1,11 +1,13 @@
 import { useState, FormEvent } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { useTheme } from '@/lib/ThemeContext';
 
 export function Login() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
+  const { isDarkMode, toggleTheme } = useTheme();
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -18,20 +20,39 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
+    <div className="relative min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
+      <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
+        <label className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600">
+          <span>{isDarkMode ? 'Dark' : 'Light'}</span>
+          <span className="relative inline-flex items-center">
+            <input
+              type="checkbox"
+              checked={isDarkMode}
+              onChange={toggleTheme}
+              className="sr-only peer"
+              aria-label="Toggle dark mode"
+            />
+            <span className="h-5 w-9 rounded-full bg-gray-300 dark:bg-slate-600 peer-checked:bg-blue-600 transition-colors" />
+            <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white peer-checked:translate-x-4 transition-transform" />
+          </span>
+        </label>
+        <span className="text-[11px] text-gray-500 dark:text-slate-400">
+          Applies app-wide
+        </span>
+      </div>
+      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md dark:bg-slate-900 dark:border dark:border-slate-800">
         <div>
-          <h2 className="text-center text-3xl font-bold text-gray-900">
+          <h2 className="text-center text-3xl font-bold text-gray-900 dark:text-slate-100">
             Schedule App
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-slate-300">
             Sign in to continue
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                 Username
               </label>
               <input
@@ -41,12 +62,12 @@ export function Login() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100"
                 placeholder="Enter your username"
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                 Password
               </label>
               <input
@@ -56,7 +77,7 @@ export function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100"
                 placeholder="Enter your password"
               />
             </div>
@@ -74,7 +95,7 @@ export function Login() {
           </button>
         </form>
 
-        <div className="mt-4 text-xs text-gray-500 text-center">
+        <div className="mt-4 text-xs text-gray-500 dark:text-slate-400 text-center">
           <p className="font-semibold mb-2">Test Users:</p>
           <p>Alice (admin), Bob, Charlie, Diana, Eve</p>
           <p className="mt-1">Password: <span className="font-mono">password</span></p>

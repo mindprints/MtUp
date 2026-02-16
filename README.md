@@ -8,12 +8,15 @@ A collaborative scheduling application for friends to coordinate events and trip
 - ✅ localStorage persistence
 - ✅ Activity proposals with emoji identifiers
 - ✅ Event vs Sejour type selection
-- ✅ Proposal list with response tracking
 - ✅ Individual calendar with click-and-drag availability marking
-- ✅ Month navigation and visual date marking
-- ✅ Master calendar showing aggregate availability
-- ✅ Consensus detection and highlighting
+- ✅ Day/Month/Year calendar views
+- ✅ Single calendar with per-proposal and "Display all" views
+- ✅ "My Proposals" filter and proposal-level consensus bars
 - ✅ Color-coded availability visualization
+- ✅ Activity Details drill-down (time/place/requirements)
+- ✅ Manual confirmation workflow (creator/admin)
+- ✅ Sejour overlap-window option generation
+- ✅ Dark mode toggle
 - 🚧 Comments and specificity refinement
 - 🚧 Activity status transitions
 
@@ -60,8 +63,8 @@ All users have the password: `password`
 - [x] Create proposal modal
 - [x] Emoji selection from pool
 - [x] Event vs Sejour toggle
-- [x] Proposal list view with status indicators
-- [x] Response tracking
+- [x] New proposal action in the main view
+- [x] Activity selection integrated into calendar workflow
 
 **Phase 3: Individual Calendar ✅**
 - [x] Month grid view
@@ -70,17 +73,25 @@ All users have the password: `password`
 - [x] Visual indicators for availability
 - [x] Month navigation (Previous/Today/Next)
 
-**Phase 4: Master Calendar ✅**
-- [x] Aggregate view showing all users
-- [x] Color-coded overlap visualization (green = all available, blue = most, yellow = some)
-- [x] Proposal filtering
+**Phase 4: Shared Calendar View ✅**
+- [x] Aggregate view showing all users on a single calendar
+- [x] Proposal filtering and "Display all" toggle
 - [x] Consensus detection and highlighting
-- [x] Detailed date modal showing available/unavailable users
-- [x] User avatar display
+- [x] User initials display (other users only)
 
 **Phase 5: Activity Details (Next)**
-- [ ] Proposal detail modal with full info
+- [x] Activity details drill-down entry point
+- [x] Time/place/requirements tabs
+- [x] Voting modes (single, multi, ranked)
+- [x] Informational analytics (first-choice + ranked scoring)
+- [x] Manual confirmation (creator/admin)
+- [x] Sejour overlap-window candidate generation
 - [ ] Comments section
 - [ ] Specificity refinement workflow
 - [ ] Status transitions (proposed → scheduled → confirmed)
 - [ ] Edit/delete proposals
+
+## Stage 2 Docs
+
+- `docs/activity-details-stage2.md`
+- `docs/icon-activity-translation.md`
