@@ -11,6 +11,7 @@ export type ActivityStatus = 'proposed' | 'scheduled' | 'confirmed';
 
 export type Proposal = {
   id: string;
+  groupId?: string;
   title: string;
   type: ActivityType;
   emoji: string;
@@ -23,6 +24,12 @@ export type Proposal = {
     location?: string;
   };
   comments?: Comment[];
+};
+
+export type GroupSummary = {
+  id: string;
+  name: string;
+  role: 'owner' | 'admin' | 'member';
 };
 
 export type Comment = {

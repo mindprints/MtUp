@@ -17,7 +17,7 @@ export function Dashboard({ children }: DashboardProps) {
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Schedule App</h1>
               <p className="text-sm text-gray-600 mt-1 dark:text-slate-300">
-                Welcome, {user?.name}
+                Welcome, {user ? 'Me' : ''}
                 {user?.isAdmin && ' (Admin)'}
               </p>
             </div>
@@ -31,13 +31,10 @@ export function Dashboard({ children }: DashboardProps) {
                     Calendar: select a proposal, then click or drag on dates to mark availability.
                   </p>
                   <p className="mt-2">
-                    Remove dates with Ctrl+click (or Cmd+click).
+                    On an activity lane: click to mark, Ctrl/Cmd+click to remove, and click again (once marked) to open details.
                   </p>
                   <p className="mt-2">
                     Filters: use Display All, My Proposals, or Selected to control what appears on the calendar.
-                  </p>
-                  <p className="mt-2">
-                    Drill-down: click <strong>Drill Into Details</strong> for time/place/requirements voting and confirmations.
                   </p>
                   <p className="mt-2">
                     Sejour tip: in Time, use <strong>Generate Overlap Windows</strong> to create candidate ranges from shared availability.

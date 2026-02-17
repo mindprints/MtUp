@@ -9,6 +9,7 @@ type CalendarCellProps = {
   proposalUsersMap: Map<string, Set<User>>; // proposalId -> Set of users available
   currentUser: User;
   onCellClick: (date: Date, ctrlKey: boolean) => void;
+  onProposalClick: (proposalId: string, date: Date, ctrlKey: boolean) => void;
   isDragging: boolean;
   onDragStart: (date: Date) => void;
   onDragEnter: (date: Date) => void;
@@ -22,6 +23,7 @@ export function CalendarCell({
   proposalUsersMap,
   currentUser,
   onCellClick,
+  onProposalClick,
   isDragging,
   onDragStart,
   onDragEnter,
@@ -93,17 +95,25 @@ export function CalendarCell({
           {proposalsWithUsers.map((item) => {
             const isCurrentUserMarked = item.users.some((u) => u.id === currentUser.id);
             const otherUsers = item.users.filter((u) => u.id !== currentUser.id);
+            const visibleOtherUsers = otherUsers.slice(0, 2);
             return (
               <div
                 key={item.proposal!.id}
-                className={`flex items-center gap-1 ${
+                className={`w-full flex items-center gap-1 whitespace-nowrap overflow-hidden ${
                   isCurrentUserMarked ? 'opacity-100' : 'opacity-50'
                 }`}
-                title={`${item.proposal!.title}: ${item.users.map((u) => u.name).join(', ')}`}
+                title={`${item.proposal!.title}: ${item.users
+                  .map((u) => (u.id === currentUser.id ? 'Me' : u.name))
+                  .join(', ')}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPast) return;
+                  onProposalClick(item.proposal!.id, date, e.ctrlKey || e.metaKey);
+                }}
               >
-                <span className="text-lg leading-none">{item.proposal!.emoji}</span>
-                <div className="flex items-center gap-0.5">
-                  {otherUsers.slice(0, 3).map((user) => (
+                <span className="text-lg leading-none shrink-0">{item.proposal!.emoji}</span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {visibleOtherUsers.map((user) => (
                     <div
                       key={user.id}
                       className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-medium bg-gray-400"
@@ -112,9 +122,9 @@ export function CalendarCell({
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                   ))}
-                  {otherUsers.length > 3 && (
+                  {otherUsers.length > visibleOtherUsers.length && (
                     <span className="text-[10px] text-gray-500 dark:text-slate-400 ml-0.5">
-                      +{otherUsers.length - 3}
+                      +{otherUsers.length - visibleOtherUsers.length}
                     </span>
                   )}
                 </div>

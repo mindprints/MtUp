@@ -78,9 +78,11 @@ export function IndividualCalendar({
   const [displayMode, setDisplayMode] = useState<DisplayMode>('selected');
   const [isDragging, setIsDragging] = useState(false);
   const [draggedDates, setDraggedDates] = useState<Set<string>>(new Set());
+  const [detailsProposalId, setDetailsProposalId] = useState<string | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const touchStartYRef = useRef<number | null>(null);
   const lastNavTimestampRef = useRef(0);
+  const lastAutoJumpProposalIdRef = useRef<string | null>(null);
 
   if (!user) return null;
 
@@ -93,9 +95,9 @@ export function IndividualCalendar({
   const usersById = new Map<string, User>(users.map((u) => [u.id, u]));
   const proposalsById = new Map(proposals.map((proposal) => [proposal.id, proposal]));
   const userAvailabilities = availabilities.filter((a) => a.userId === user.id);
-  const selectedProposal = proposals.find(
-    (proposal) => proposal.id === selectedProposalId
-  );
+  const detailsProposal = detailsProposalId
+    ? proposalsById.get(detailsProposalId) || null
+    : null;
 
   // Build a map of date -> (proposalId -> users available)
   const dateToProposalUsers = new Map<string, Map<string, Set<User>>>();
@@ -255,6 +257,46 @@ export function IndividualCalendar({
     }
   };
 
+  const handleProposalClick = (
+    proposalId: string,
+    date: Date,
+    ctrlKey: boolean
+  ) => {
+    const dateStr = formatDate(date);
+    const existingAvail = userAvailabilities.find((a) => a.proposalId === proposalId);
+    const isCurrentlyMarked = Boolean(existingAvail?.dates.includes(dateStr));
+
+    if (ctrlKey) {
+      if (!existingAvail || !isCurrentlyMarked) return;
+      setAvailability({
+        ...existingAvail,
+        dates: existingAvail.dates.filter((d) => d !== dateStr),
+      });
+      return;
+    }
+
+    if (isCurrentlyMarked) {
+      setDetailsProposalId(proposalId);
+      setIsDetailsModalOpen(true);
+      return;
+    }
+
+    if (existingAvail) {
+      setAvailability({
+        ...existingAvail,
+        dates: [...existingAvail.dates, dateStr],
+      });
+      return;
+    }
+
+    setAvailability({
+      id: generateId(),
+      userId: user.id,
+      proposalId,
+      dates: [dateStr],
+    });
+  };
+
   const handleDragStart = (date: Date) => {
     if (!selectedProposalId || calendarView !== 'month') return;
 
@@ -310,7 +352,11 @@ export function IndividualCalendar({
   };
 
   useEffect(() => {
-    if (!selectedProposalId) return;
+    if (!selectedProposalId) {
+      lastAutoJumpProposalIdRef.current = null;
+      return;
+    }
+    if (lastAutoJumpProposalIdRef.current === selectedProposalId) return;
 
     const proposalDates = Array.from(
       new Set(
@@ -320,7 +366,10 @@ export function IndividualCalendar({
       )
     ).sort();
 
-    if (proposalDates.length === 0) return;
+    if (proposalDates.length === 0) {
+      lastAutoJumpProposalIdRef.current = selectedProposalId;
+      return;
+    }
     const hasVisibleDate = proposalDates.some((dateIso) =>
       isDateVisibleInCurrentView(dateIso)
     );
@@ -328,7 +377,8 @@ export function IndividualCalendar({
     if (!hasVisibleDate) {
       setCurrentDate(parseISO(proposalDates[0]));
     }
-  }, [selectedProposalId, availabilities, calendarView, currentDate]);
+    lastAutoJumpProposalIdRef.current = selectedProposalId;
+  }, [selectedProposalId, availabilities, calendarView]);
 
   const selectedDateIso = formatDate(currentDate);
   const confirmedOnDate = proposals.filter(
@@ -447,17 +497,6 @@ export function IndividualCalendar({
               })}
             </div>
 
-            {selectedProposal && (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsDetailsModalOpen(true)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
-                >
-                  Drill Into Details
-                </button>
-              </div>
-            )}
           </div>
         </>
       )}
@@ -556,6 +595,7 @@ export function IndividualCalendar({
                   proposalUsersMap={proposalUsersMap}
                   currentUser={user}
                   onCellClick={handleCellClick}
+                  onProposalClick={handleProposalClick}
                   isDragging={isDragging}
                   onDragStart={handleDragStart}
                   onDragEnter={handleDragEnter}
@@ -688,11 +728,14 @@ export function IndividualCalendar({
         </div>
       )}
 
-      {selectedProposal && (
+      {detailsProposal && (
         <ActivityDetailsModal
           isOpen={isDetailsModalOpen}
-          onClose={() => setIsDetailsModalOpen(false)}
-          proposal={selectedProposal}
+          onClose={() => {
+            setIsDetailsModalOpen(false);
+            setDetailsProposalId(null);
+          }}
+          proposal={detailsProposal}
           currentUser={user}
         />
       )}

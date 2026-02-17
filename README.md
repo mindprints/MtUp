@@ -31,6 +31,12 @@ npm run dev
 
 # Build for production
 npm run build
+
+# Run unit tests
+npm run test:run
+
+# Run e2e tests
+npm run test:e2e
 ```
 
 ## Mock Users
@@ -95,3 +101,19 @@ All users have the password: `password`
 
 - `docs/activity-details-stage2.md`
 - `docs/icon-activity-translation.md`
+- `docs/handoff-2026-02-16.md`
+- `docs/handoff-2026-02-17.md`
+- `docs/current-architecture-truth.md`
+- `docs/supabase/README.md`
+- `docs/supabase/001_initial_group_aware_schema.sql`
+- `docs/supabase/002_seed_example_profiles_and_group.sql`
+- `docs/supabase/003_seed_second_group_isolation.sql`
+- `docs/supabase/004_rls_isolation_verification.sql`
+- `docs/supabase/005_rls_hotfix_group_memberships_recursion.sql`
+- `docs/plan-1-supabase-migration-auth.md`
+- `docs/plan-2-deployment-dokploy-vps-and-vercel.md`
+- `docs/plan-3-ai-orchestrator.md`
+- `docs/plan-4-slack-integration.md`
+- `docs/implementation-roadmap-overview.md`
+- `docs/execution-tracker-2026-02-17.md`
+- `docs/syncup-vs-mtup-methods-and-trajectory-2026-02-17.md`

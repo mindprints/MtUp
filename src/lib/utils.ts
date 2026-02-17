@@ -51,5 +51,8 @@ export function getAvailableEmoji(usedEmojis: string[]): string {
 
 // Generate a unique ID
 export function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }

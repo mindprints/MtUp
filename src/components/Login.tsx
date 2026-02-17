@@ -1,21 +1,41 @@
 import { useState, FormEvent } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useTheme } from '@/lib/ThemeContext';
+import { isSupabaseMode } from '@/lib/runtimeConfig';
 
 export function Login() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
 
-  const handleSubmit = (e: FormEvent) => {
+  const usingSupabase = isSupabaseMode();
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    const success = login(name, password);
+
+    setIsSubmitting(true);
+    const uiFailSafe = setTimeout(() => {
+      setIsSubmitting(false);
+      setError('Sign-in timed out. Please try again.');
+    }, 15000);
+    let success = false;
+    try {
+      success = await login(name, password);
+    } finally {
+      clearTimeout(uiFailSafe);
+      setIsSubmitting(false);
+    }
+
     if (!success) {
-      setError('Invalid username or password');
+      setError(
+        usingSupabase
+          ? 'Sign-in failed. Check email/password and Supabase settings.'
+          : 'Invalid username or password'
+      );
     }
   };
 
@@ -53,17 +73,17 @@ export function Login() {
           <div className="space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
-                Username
+                {usingSupabase ? 'Email' : 'Username'}
               </label>
               <input
                 id="name"
                 name="name"
-                type="text"
+                type={usingSupabase ? 'email' : 'text'}
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100"
-                placeholder="Enter your username"
+                placeholder={usingSupabase ? 'Enter your email' : 'Enter your username'}
               />
             </div>
             <div>
@@ -74,6 +94,7 @@ export function Login() {
                 id="password"
                 name="password"
                 type="password"
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -89,17 +110,20 @@ export function Login() {
 
           <button
             type="submit"
+            disabled={isSubmitting}
             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            Sign in
+            {isSubmitting ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
-        <div className="mt-4 text-xs text-gray-500 dark:text-slate-400 text-center">
-          <p className="font-semibold mb-2">Test Users:</p>
-          <p>Alice (admin), Bob, Charlie, Diana, Eve</p>
-          <p className="mt-1">Password: <span className="font-mono">password</span></p>
-        </div>
+        {!usingSupabase && (
+          <div className="mt-4 text-xs text-gray-500 dark:text-slate-400 text-center">
+            <p className="font-semibold mb-2">Test Users:</p>
+            <p>Alice (admin), Bob, Charlie, Diana, Eve</p>
+            <p className="mt-1">Password: <span className="font-mono">password</span></p>
+          </div>
+        )}
       </div>
     </div>
   );

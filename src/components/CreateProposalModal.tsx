@@ -4,7 +4,6 @@ import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
 import type { ActivityType, Proposal } from '@/types';
 import { getAvailableEmoji, generateId } from '@/lib/utils';
-import { EMOJI_POOL } from '@/lib/utils';
 import { suggestIconFromTitle } from '@/lib/iconDictionary';
 
 type CreateProposalModalProps = {
@@ -23,12 +22,10 @@ export function CreateProposalModal({
   
   const [title, setTitle] = useState('');
   const [type, setType] = useState<ActivityType>('event');
-  const [selectedEmoji, setSelectedEmoji] = useState('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const usedEmojis = proposals.map((p) => p.emoji);
   const suggestedEmoji = suggestIconFromTitle(title);
-  const resolvedEmoji = selectedEmoji || suggestedEmoji || getAvailableEmoji(usedEmojis);
+  const resolvedEmoji = suggestedEmoji || getAvailableEmoji(usedEmojis);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -53,16 +50,12 @@ export function CreateProposalModal({
     // Reset form
     setTitle('');
     setType('event');
-    setSelectedEmoji('');
-    setShowEmojiPicker(false);
     onClose();
   };
 
   const handleClose = () => {
     setTitle('');
     setType('event');
-    setSelectedEmoji('');
-    setShowEmojiPicker(false);
     onClose();
   };
 
@@ -117,52 +110,18 @@ export function CreateProposalModal({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
-            Icon (optional)
+            Icon (auto-selected)
           </label>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-16 h-16 border-2 border-gray-300 dark:border-slate-600 rounded-lg text-3xl">
-              {resolvedEmoji}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              {showEmojiPicker ? 'Hide' : 'Choose'} Icon
-            </button>
+          <div className="flex items-center justify-center w-16 h-16 border-2 border-gray-300 dark:border-slate-600 rounded-lg text-3xl">
+            {resolvedEmoji}
           </div>
-          {suggestedEmoji && !selectedEmoji && (
+          {suggestedEmoji && (
             <p className="mt-1 text-xs text-blue-600 dark:text-blue-300">
               Auto-selected from title keyword: {suggestedEmoji}
             </p>
           )}
-          
-          {showEmojiPicker && (
-            <div className="mt-3 p-3 border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-slate-800 max-h-48 overflow-y-auto">
-              <div className="grid grid-cols-8 gap-2">
-                {EMOJI_POOL.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => {
-                      setSelectedEmoji(emoji);
-                      setShowEmojiPicker(false);
-                    }}
-                    className={`text-2xl p-2 rounded hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors ${
-                      selectedEmoji === emoji ? 'bg-blue-100 ring-2 ring-blue-500' : ''
-                    } ${
-                      usedEmojis.includes(emoji) ? 'opacity-40' : ''
-                    }`}
-                    title={usedEmojis.includes(emoji) ? 'Already in use' : ''}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-            An icon will be auto-assigned if you don't choose one
+            Icon is assigned automatically from activity title keywords, with fallback auto-assignment.
           </p>
         </div>
 

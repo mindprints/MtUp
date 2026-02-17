@@ -84,6 +84,22 @@ export const storage = {
     return null;
   },
 
+  // Set current user from external auth source (e.g., Supabase)
+  setCurrentUser(user: User): void {
+    const data = this.getData();
+    const existingIndex = data.users.findIndex((u) => u.id === user.id);
+    if (existingIndex !== -1) {
+      data.users[existingIndex] = {
+        ...data.users[existingIndex],
+        ...user,
+      };
+    } else {
+      data.users.push(user);
+    }
+    data.currentUserId = user.id;
+    this.setData(data);
+  },
+
   // Logout
   logout(): void {
     const data = this.getData();

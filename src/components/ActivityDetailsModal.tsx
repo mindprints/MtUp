@@ -506,7 +506,9 @@ export function ActivityDetailsModal({
               <p>
                 Latest confirmation by{' '}
                 <strong>
-                  {usersById.get(latestConfirmation.confirmedBy)?.name ||
+                  {latestConfirmation.confirmedBy === currentUser.id
+                    ? 'Me'
+                    : usersById.get(latestConfirmation.confirmedBy)?.name ||
                     latestConfirmation.confirmedBy}
                 </strong>{' '}
                 on {new Date(latestConfirmation.confirmedAt).toLocaleString()}.
