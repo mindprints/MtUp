@@ -9,4 +9,9 @@ describe('runtimeConfig', () => {
   it('isSupabaseMode stays consistent with dataSource', () => {
     expect(isSupabaseMode()).toBe(runtimeConfig.dataSource === 'supabase');
   });
+
+  it('exposes valid AI runtime settings', () => {
+    expect(typeof runtimeConfig.aiAssistantEnabled).toBe('boolean');
+    expect(runtimeConfig.orchestratorBaseUrl.length).toBeGreaterThan(0);
+  });
 });

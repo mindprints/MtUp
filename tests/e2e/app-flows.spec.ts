@@ -6,6 +6,10 @@ type LoginOptions = {
 };
 
 async function loginAsDefaultUser(page: Page, options: LoginOptions = {}) {
+  await page.addInitScript(() => {
+    localStorage.setItem('mtup-primary-tab', 'workspace');
+  });
+
   await page.goto('/');
 
   const nameInput = page.locator('#name');
@@ -23,9 +27,8 @@ async function loginAsDefaultUser(page: Page, options: LoginOptions = {}) {
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  await expect(page.getByRole('button', { name: '+ New Proposal' })).toBeVisible({
-    timeout: 20000,
-  });
+  const eventButton = page.getByRole('button', { name: '+ Event' });
+  await expect(eventButton).toBeVisible({ timeout: 20000 });
 }
 
 async function signOut(page: Page) {
@@ -38,7 +41,7 @@ test.describe('App Flows', () => {
 
   test('can sign in and reach dashboard', async ({ page }) => {
     await loginAsDefaultUser(page);
-    await expect(page.getByText('Welcome, Me')).toBeVisible();
+    await expect(page.getByText(/^Welcome,\s+/)).toBeVisible();
   });
 
   test('can create a proposal and keep it after reload', async ({ page }) => {
@@ -46,8 +49,25 @@ test.describe('App Flows', () => {
 
     const proposalTitle = `E2E Proposal ${Date.now()}`;
 
-    await page.getByRole('button', { name: '+ New Proposal' }).click();
-    await expect(page.getByText('Create Activity Proposal')).toBeVisible();
+    await page.getByRole('button', { name: '+ Event' }).click();
+    await expect(page.getByText('Create Event Proposal')).toBeVisible();
+
+    await page.locator('#title').fill(proposalTitle);
+    await page.getByRole('button', { name: 'Create Proposal' }).click();
+
+    await expect(page.getByText(proposalTitle)).toBeVisible({ timeout: 30000 });
+
+    await page.reload();
+    await expect(page.getByText(proposalTitle)).toBeVisible({ timeout: 30000 });
+  });
+
+  test('can create a sejour and keep it after reload', async ({ page }) => {
+    await loginAsDefaultUser(page);
+
+    const proposalTitle = `E2E Sejour ${Date.now()}`;
+
+    await page.getByRole('button', { name: '+ Sejour' }).click();
+    await expect(page.getByText('Create Sejour Proposal')).toBeVisible();
 
     await page.locator('#title').fill(proposalTitle);
     await page.getByRole('button', { name: 'Create Proposal' }).click();
@@ -70,7 +90,7 @@ test.describe('App Flows', () => {
     page.on('dialog', (dialog) => dialog.accept());
     await deleteAllButton.click();
 
-    await expect(page.getByRole('button', { name: '+ New Proposal' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ Event' })).toBeVisible();
   });
 
   test('availability persists after reload (Supabase-backed)', async ({ page }) => {
@@ -78,7 +98,7 @@ test.describe('App Flows', () => {
 
     const proposalTitle = `Coffee E2E ${Date.now()}`;
 
-    await page.getByRole('button', { name: '+ New Proposal' }).click();
+    await page.getByRole('button', { name: '+ Event' }).click();
     await page.locator('#title').fill(proposalTitle);
     await page.getByRole('button', { name: 'Create Proposal' }).click();
     await expect(page.getByText(proposalTitle)).toBeVisible({ timeout: 20000 });
@@ -119,7 +139,7 @@ test.describe('App Flows', () => {
 
     const proposalTitle = `RemoveAvail E2E ${Date.now()}`;
 
-    await page.getByRole('button', { name: '+ New Proposal' }).click();
+    await page.getByRole('button', { name: '+ Event' }).click();
     await page.locator('#title').fill(proposalTitle);
     await page.getByRole('button', { name: 'Create Proposal' }).click();
     await expect(page.getByText(proposalTitle)).toBeVisible({ timeout: 20000 });
@@ -199,7 +219,7 @@ test.describe('App Flows', () => {
 
     const proposalTitle = `LaneModal E2E ${Date.now()}`;
 
-    await page.getByRole('button', { name: '+ New Proposal' }).click();
+    await page.getByRole('button', { name: '+ Event' }).click();
     await page.locator('#title').fill(proposalTitle);
     await page.getByRole('button', { name: 'Create Proposal' }).click();
     await expect(page.getByText(proposalTitle)).toBeVisible({ timeout: 20000 });
@@ -241,7 +261,7 @@ test.describe('App Flows', () => {
     });
 
     const proposalTitle = `CrossUser E2E ${Date.now()}`;
-    await page.getByRole('button', { name: '+ New Proposal' }).click();
+    await page.getByRole('button', { name: '+ Event' }).click();
     await page.locator('#title').fill(proposalTitle);
     await page.getByRole('button', { name: 'Create Proposal' }).click();
     await expect(page.getByText(proposalTitle)).toBeVisible();

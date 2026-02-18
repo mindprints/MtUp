@@ -17,7 +17,7 @@ Track implementation progress across the roadmap with dates, owners, status, and
 | B. Supabase app cutover complete | 2026-03-13 | not_started | TBD | A | Remove localStorage runtime path |
 | C. Staging + production deployment live | 2026-03-20 | not_started | TBD | B | Plan 2 complete (Dokploy or Vercel path) |
 | D. Slack outbound notifications live | 2026-03-31 | not_started | TBD | C | Plan 4 phase 1 |
-| E. AI orchestrator read-only live | 2026-04-10 | not_started | TBD | C | Plan 3 phase 1 |
+| E. AI orchestrator read-only live | 2026-04-10 | in_progress | TBD | C | Dev baseline active: AI-first UI + local orchestrator + OpenRouter coupling |
 | F. AI approval-gated actions live | 2026-04-24 | not_started | TBD | D, E | Plan 3 phase 2+ |
 
 ## Workstream Tracker
@@ -36,8 +36,8 @@ Track implementation progress across the roadmap with dates, owners, status, and
 | Slack | Slack app setup + token/scopes + signature verification | Plan 4 | 2026-03-20 | 2026-03-24 | not_started | TBD | Deploy | Verified signed webhook handling |
 | Slack | Outbound notifications (proposal, reminder, confirmation) | Plan 4 | 2026-03-24 | 2026-03-31 | not_started | TBD | Slack setup | Messages delivered reliably |
 | Slack | Reminder scheduler + channel mapping | Plan 4 | 2026-03-25 | 2026-04-03 | not_started | TBD | Outbound baseline | Digest/reminder policy active |
-| AI | Orchestrator service skeleton + tool contracts | Plan 3 | 2026-03-24 | 2026-03-31 | not_started | TBD | Deploy | Typed tool interfaces live |
-| AI | Read-only admin assistant (summary + recommendations) | Plan 3 | 2026-03-31 | 2026-04-10 | not_started | TBD | Orchestrator skeleton | Admin can run ask/review flow |
+| AI | Orchestrator service skeleton + tool contracts | Plan 3 | 2026-03-24 | 2026-03-31 | in_progress | TBD | Deploy | Local dev orchestrator and typed client contracts live; migrate to server service path next |
+| AI | Read-only admin assistant (summary + recommendations) | Plan 3 | 2026-03-31 | 2026-04-10 | in_progress | TBD | Orchestrator skeleton | AI-first panel live with read-only tools (confirmed/availability/attendees); audit/action path pending |
 | AI | Audit logging + approval workflow UI | Plan 3 | 2026-04-07 | 2026-04-17 | not_started | TBD | Read-only assistant | Every action auditable |
 | AI | Approval-gated action execution (Slack + internal actions) | Plan 3 | 2026-04-14 | 2026-04-24 | not_started | TBD | Audit + Slack outbound | No unapproved writes |
 | Governance | Create canonical `current-architecture-truth` doc | Cross-cutting | 2026-02-18 | 2026-02-19 | done | TBD | - | Completed in `docs/current-architecture-truth.md` |

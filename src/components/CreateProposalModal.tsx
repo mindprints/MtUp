@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { Modal } from './Modal';
 import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
@@ -9,19 +9,26 @@ import { suggestIconFromTitle } from '@/lib/iconDictionary';
 type CreateProposalModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  initialType?: ActivityType;
   onProposalCreated?: (proposalId: string) => void;
 };
 
 export function CreateProposalModal({
   isOpen,
   onClose,
+  initialType = 'event',
   onProposalCreated,
 }: CreateProposalModalProps) {
   const { user } = useAuth();
   const { proposals, addProposal } = useProposals();
   
   const [title, setTitle] = useState('');
-  const [type, setType] = useState<ActivityType>('event');
+  const [type, setType] = useState<ActivityType>(initialType);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setType(initialType);
+  }, [isOpen, initialType]);
 
   const usedEmojis = proposals.map((p) => p.emoji);
   const suggestedEmoji = suggestIconFromTitle(title);
@@ -55,12 +62,16 @@ export function CreateProposalModal({
 
   const handleClose = () => {
     setTitle('');
-    setType('event');
+    setType(initialType);
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Create Activity Proposal">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={type === 'sejour' ? 'Create Sejour Proposal' : 'Create Event Proposal'}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-1">
@@ -84,28 +95,35 @@ export function CreateProposalModal({
           <label className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-2">
             Activity Type *
           </label>
-          <div className="flex gap-4">
-            <label className="flex items-center cursor-pointer dark:text-slate-200">
-              <input
-                type="radio"
-                value="event"
-                checked={type === 'event'}
-                onChange={(e) => setType(e.target.value as ActivityType)}
-                className="mr-2"
-              />
-              <span className="text-sm">Event (single day)</span>
-            </label>
-            <label className="flex items-center cursor-pointer dark:text-slate-200">
-              <input
-                type="radio"
-                value="sejour"
-                checked={type === 'sejour'}
-                onChange={(e) => setType(e.target.value as ActivityType)}
-                className="mr-2"
-              />
-              <span className="text-sm">Sejour (multi-day trip)</span>
-            </label>
+          <div className="grid grid-cols-2 gap-2 rounded-md border border-gray-300 p-1 dark:border-slate-600">
+            <button
+              type="button"
+              onClick={() => setType('event')}
+              className={`rounded px-3 py-2 text-sm font-medium transition-colors ${
+                type === 'event'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              Event
+            </button>
+            <button
+              type="button"
+              onClick={() => setType('sejour')}
+              className={`rounded px-3 py-2 text-sm font-medium transition-colors ${
+                type === 'sejour'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              Sejour
+            </button>
           </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+            {type === 'sejour'
+              ? 'Sejour proposals can represent one or multiple candidate date windows.'
+              : 'Event proposals are usually single-date activities.'}
+          </p>
         </div>
 
         <div>

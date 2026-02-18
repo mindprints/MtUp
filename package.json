@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "ai:dev": "node server/dev-orchestrator.mjs",
     "build": "tsc && vite build",
     "test": "vitest",
     "test:run": "vitest run",

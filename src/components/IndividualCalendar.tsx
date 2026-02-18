@@ -26,7 +26,7 @@ import { generateId } from '@/lib/utils';
 import type { Availability, Proposal, User } from '@/types';
 
 type CalendarView = 'day' | 'month' | 'year';
-type DisplayMode = 'selected' | 'all' | 'mine';
+type DisplayMode = 'selected' | 'all' | 'mine' | 'my_choices';
 
 type IndividualCalendarProps = {
   selectedProposalId: string | null;
@@ -71,7 +71,13 @@ export function IndividualCalendar({
   onSelectedProposalIdChange,
 }: IndividualCalendarProps) {
   const { user } = useAuth();
-  const { proposals, availabilities, setAvailability } = useProposals();
+  const {
+    proposals,
+    availabilities,
+    decisionVotes,
+    groupUsers,
+    setAvailability,
+  } = useProposals();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarView>('month');
@@ -90,9 +96,16 @@ export function IndividualCalendar({
   const yearMonths = Array.from({ length: 12 }, (_, index) => {
     return new Date(currentDate.getFullYear(), index, 1);
   });
-  const users = storage.getData().users;
-  const totalUsers = users.length;
-  const usersById = new Map<string, User>(users.map((u) => [u.id, u]));
+  const users: User[] = groupUsers.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    isAdmin: entry.isAdmin,
+    password: '',
+  }));
+  const fallbackUsers = storage.getData().users;
+  const usersById = new Map<string, User>();
+  fallbackUsers.forEach((entry) => usersById.set(entry.id, entry));
+  users.forEach((entry) => usersById.set(entry.id, entry));
   const proposalsById = new Map(proposals.map((proposal) => [proposal.id, proposal]));
   const userAvailabilities = availabilities.filter((a) => a.userId === user.id);
   const detailsProposal = detailsProposalId
@@ -116,17 +129,53 @@ export function IndividualCalendar({
     });
   });
 
-  const proposalConsensusById = new Map<string, number>();
-  proposals.forEach((proposal) => proposalConsensusById.set(proposal.id, 0));
-  dateToProposalUsers.forEach((proposalUsersMap) => {
-    proposalUsersMap.forEach((availableUsers, proposalId) => {
-      const percentage = totalUsers === 0
-        ? 0
-        : Math.round((availableUsers.size / totalUsers) * 100);
-      const existing = proposalConsensusById.get(proposalId) || 0;
-      proposalConsensusById.set(proposalId, Math.max(existing, percentage));
-    });
+  const availableUserIdsByProposal = new Map<string, Set<string>>();
+  availabilities.forEach((availability) => {
+    if (!availability.dates || availability.dates.length === 0) return;
+    if (!availableUserIdsByProposal.has(availability.proposalId)) {
+      availableUserIdsByProposal.set(availability.proposalId, new Set<string>());
+    }
+    availableUserIdsByProposal.get(availability.proposalId)!.add(availability.userId);
   });
+
+  const voterIdsByProposal = new Map<string, Set<string>>();
+  decisionVotes.forEach((vote) => {
+    if (!voterIdsByProposal.has(vote.proposalId)) {
+      voterIdsByProposal.set(vote.proposalId, new Set<string>());
+    }
+    voterIdsByProposal.get(vote.proposalId)!.add(vote.userId);
+  });
+
+  const myChoiceProposalIds = new Set(
+    userAvailabilities
+      .filter((availability) => availability.dates.length > 0)
+      .map((availability) => availability.proposalId)
+  );
+
+  const knownParticipantIds = new Set<string>(users.map((entry) => entry.id));
+  availabilities.forEach((availability) => {
+    knownParticipantIds.add(availability.userId);
+  });
+  decisionVotes.forEach((vote) => {
+    knownParticipantIds.add(vote.userId);
+  });
+  proposals.forEach((proposal) => {
+    knownParticipantIds.add(proposal.createdBy);
+  });
+  knownParticipantIds.add(user.id);
+
+  const totalUsers = knownParticipantIds.size;
+
+  const getVisibleProposals = (): Proposal[] => {
+    if (displayMode === 'all') return proposals;
+    if (displayMode === 'mine') {
+      return proposals.filter((proposal) => proposal.createdBy === user.id);
+    }
+    if (displayMode === 'my_choices') {
+      return proposals.filter((proposal) => myChoiceProposalIds.has(proposal.id));
+    }
+    return proposals;
+  };
 
   const getFilteredProposalUsersMap = (dateStr: string) => {
     const allProposalUsersMap = new Map(
@@ -142,6 +191,12 @@ export function IndividualCalendar({
       allProposalUsersMap.forEach((usersForProposal, proposalId) => {
         const proposal = proposalsById.get(proposalId);
         if (proposal?.createdBy === user.id) {
+          filteredMap.set(proposalId, usersForProposal);
+        }
+      });
+    } else if (displayMode === 'my_choices') {
+      allProposalUsersMap.forEach((usersForProposal, proposalId) => {
+        if (myChoiceProposalIds.has(proposalId)) {
           filteredMap.set(proposalId, usersForProposal);
         }
       });
@@ -358,11 +413,20 @@ export function IndividualCalendar({
     }
     if (lastAutoJumpProposalIdRef.current === selectedProposalId) return;
 
+    const selectedProposal = proposalsById.get(selectedProposalId);
+    const availabilityDates = availabilities
+      .filter((availability) => availability.proposalId === selectedProposalId)
+      .flatMap((availability) => availability.dates);
+    const specificsStartDate = selectedProposal?.specifics?.date
+      ? selectedProposal.specifics.date.split(' to ')[0]
+      : null;
+
     const proposalDates = Array.from(
       new Set(
-        availabilities
-          .filter((availability) => availability.proposalId === selectedProposalId)
-          .flatMap((availability) => availability.dates)
+        [
+          ...availabilityDates,
+          ...(specificsStartDate ? [specificsStartDate] : []),
+        ].filter(Boolean)
       )
     ).sort();
 
@@ -370,12 +434,20 @@ export function IndividualCalendar({
       lastAutoJumpProposalIdRef.current = selectedProposalId;
       return;
     }
+
+    const firstProposalDate = parseISO(proposalDates[0]);
+    if (calendarView === 'day') {
+      setCurrentDate(firstProposalDate);
+      lastAutoJumpProposalIdRef.current = selectedProposalId;
+      return;
+    }
+
     const hasVisibleDate = proposalDates.some((dateIso) =>
       isDateVisibleInCurrentView(dateIso)
     );
 
     if (!hasVisibleDate) {
-      setCurrentDate(parseISO(proposalDates[0]));
+      setCurrentDate(firstProposalDate);
     }
     lastAutoJumpProposalIdRef.current = selectedProposalId;
   }, [selectedProposalId, availabilities, calendarView]);
@@ -398,6 +470,8 @@ export function IndividualCalendar({
     }
     confirmedByHour.get(hour)!.push(proposal);
   });
+
+  const visibleProposals = getVisibleProposals();
 
   return (
     <div className="space-y-4">
@@ -432,6 +506,19 @@ export function IndividualCalendar({
               </button>
               <button
                 type="button"
+                onClick={() =>
+                  setDisplayMode(displayMode === 'my_choices' ? 'selected' : 'my_choices')
+                }
+                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  displayMode === 'my_choices'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700'
+                }`}
+              >
+                My Choices
+              </button>
+              <button
+                type="button"
                 onClick={() => setDisplayMode('selected')}
                 className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
                   displayMode === 'selected'
@@ -444,10 +531,15 @@ export function IndividualCalendar({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-              {proposals.map((proposal) => {
+              {visibleProposals.map((proposal) => {
                 const isSelected = selectedProposalId === proposal.id;
-                const proposalConsensus = proposalConsensusById.get(proposal.id) || 0;
                 const isConfirmed = proposal.status === 'confirmed';
+                const creatorName = usersById.get(proposal.createdBy)?.name || proposal.createdBy;
+                const availableCount = availableUserIdsByProposal.get(proposal.id)?.size || 0;
+                const voterIds = Array.from(voterIdsByProposal.get(proposal.id) || []);
+                const voterNames = voterIds
+                  .map((voterId) => (voterId === user.id ? 'Me' : usersById.get(voterId)?.name || voterId))
+                  .slice(0, 3);
                 return (
                   <button
                     key={proposal.id}
@@ -464,7 +556,33 @@ export function IndividualCalendar({
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-2xl">{proposal.emoji}</span>
                       <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{proposal.title}</span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          proposal.type === 'sejour'
+                            ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'
+                        }`}
+                      >
+                        {proposal.type}
+                      </span>
                       {isSelected && <span className="text-blue-600 text-xs">✓</span>}
+                    </div>
+                    <div className="mb-2 space-y-1 text-xs text-gray-600 dark:text-slate-300">
+                      <div>
+                        Proposer:{' '}
+                        <span className="font-medium">
+                          {proposal.createdBy === user.id ? 'Me' : creatorName}
+                        </span>
+                      </div>
+                      <div>
+                        Available: <span className="font-medium">{availableCount}/{totalUsers}</span>
+                      </div>
+                      <div>
+                        Voted: <span className="font-medium">{voterIds.length}</span>
+                        {voterNames.length > 0 && (
+                          <span> ({voterNames.join(', ')}{voterIds.length > voterNames.length ? ', ...' : ''})</span>
+                        )}
+                      </div>
                     </div>
                     {isConfirmed && (
                       <div className="mb-2 text-xs">
@@ -480,22 +598,15 @@ export function IndividualCalendar({
                         )}
                       </div>
                     )}
-                    <div>
-                      <div className="flex items-center justify-between text-xs text-gray-600 dark:text-slate-300">
-                        <span>Consensus</span>
-                        <span>{proposalConsensus}%</span>
-                      </div>
-                      <div className="mt-1 h-2 rounded-full bg-gray-200 dark:bg-slate-700">
-                        <div
-                          className="h-2 rounded-full bg-blue-500 transition-all"
-                          style={{ width: `${proposalConsensus}%` }}
-                        />
-                      </div>
-                    </div>
                   </button>
                 );
               })}
             </div>
+            {visibleProposals.length === 0 && (
+              <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                No proposals match this filter.
+              </div>
+            )}
 
           </div>
         </>
@@ -702,6 +813,13 @@ export function IndividualCalendar({
                     const dayMap = getFilteredProposalUsersMap(dateStr);
                     const isInMonth = date.getMonth() === monthStart.getMonth();
                     const isPast = isBefore(startOfDay(date), startOfDay(new Date()));
+                    const dayProposalIds = Array.from(dayMap.keys());
+                    const hasSejour = dayProposalIds.some(
+                      (proposalId) => proposalsById.get(proposalId)?.type === 'sejour'
+                    );
+                    const hasEvent = dayProposalIds.some(
+                      (proposalId) => proposalsById.get(proposalId)?.type === 'event'
+                    );
                     return (
                       <button
                         key={`${monthStart.toISOString()}-${dateStr}`}
@@ -716,7 +834,14 @@ export function IndividualCalendar({
                       >
                         <div className="text-[10px]">{date.getDate()}</div>
                         {dayMap.size > 0 && (
-                          <div className="mt-1 h-1.5 w-full rounded-full bg-blue-200 dark:bg-blue-900/60" />
+                          <div className="mt-1 flex items-center gap-1">
+                            {hasEvent && (
+                              <div className="h-1.5 flex-1 rounded-full bg-blue-300 dark:bg-blue-900/60" />
+                            )}
+                            {hasSejour && (
+                              <div className="h-1.5 flex-1 rounded-full border border-dashed border-teal-500 bg-teal-200 dark:border-teal-700 dark:bg-teal-900/40" />
+                            )}
+                          </div>
                         )}
                       </button>
                     );

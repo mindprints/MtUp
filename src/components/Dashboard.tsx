@@ -17,7 +17,7 @@ export function Dashboard({ children }: DashboardProps) {
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Schedule App</h1>
               <p className="text-sm text-gray-600 mt-1 dark:text-slate-300">
-                Welcome, {user ? 'Me' : ''}
+                Welcome, {user?.name || ''}
                 {user?.isAdmin && ' (Admin)'}
               </p>
             </div>
@@ -28,13 +28,13 @@ export function Dashboard({ children }: DashboardProps) {
                 </summary>
                 <div className="absolute right-0 mt-2 w-80 z-20 rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700 shadow-lg dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200">
                   <p>
-                    Calendar: select a proposal, then click or drag on dates to mark availability.
+                    Create with + Event or + Sejour, then select a proposal and click or drag dates to mark availability.
                   </p>
                   <p className="mt-2">
                     On an activity lane: click to mark, Ctrl/Cmd+click to remove, and click again (once marked) to open details.
                   </p>
                   <p className="mt-2">
-                    Filters: use Display All, My Proposals, or Selected to control what appears on the calendar.
+                    Filters: use Display All, My Proposals, My Choices, or Selected to control what appears on the calendar.
                   </p>
                   <p className="mt-2">
                     Sejour tip: in Time, use <strong>Generate Overlap Windows</strong> to create candidate ranges from shared availability.

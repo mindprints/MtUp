@@ -5,17 +5,19 @@ A collaborative scheduling application for friends to coordinate events and trip
 ## Features (In Development)
 
 - ✅ User authentication (5 mock users)
-- ✅ localStorage persistence
+- ✅ Supabase-backed auth, proposals, and availabilities in dev mode
 - ✅ Activity proposals with emoji identifiers
-- ✅ Event vs Sejour type selection
+- ✅ Explicit `+ Event` / `+ Sejour` creation flow
 - ✅ Individual calendar with click-and-drag availability marking
 - ✅ Day/Month/Year calendar views
-- ✅ Single calendar with per-proposal and "Display all" views
-- ✅ "My Proposals" filter and proposal-level consensus bars
+- ✅ Single calendar with `Display All` / `My Proposals` / `My Choices` / `Selected` filters
+- ✅ Proposal cards with proposer, availability counts, and voter counts
 - ✅ Color-coded availability visualization
 - ✅ Activity Details drill-down (time/place/requirements)
 - ✅ Manual confirmation workflow (creator/admin)
 - ✅ Sejour overlap-window option generation
+- ✅ AI-first landing with assistant/workspace tabs
+- ✅ Local AI dev orchestrator + OpenRouter coupling (read-only tools)
 - ✅ Dark mode toggle
 - 🚧 Comments and specificity refinement
 - 🚧 Activity status transitions
@@ -29,6 +31,9 @@ npm install
 # Run development server
 npm run dev
 
+# Run local AI orchestrator (optional, for AI modal in dev)
+npm run ai:dev
+
 # Build for production
 npm run build
 
@@ -38,6 +43,13 @@ npm run test:run
 # Run e2e tests
 npm run test:e2e
 ```
+
+To enable AI modal in dev:
+- Set `VITE_AI_ASSISTANT_ENABLED=true`
+- Set `VITE_ORCHESTRATOR_BASE_URL=http://localhost:8787`
+- Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+- Set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL`
+- Run `npm run ai:dev` in a second terminal
 
 ## Mock Users
 
@@ -55,7 +67,7 @@ All users have the password: `password`
 - TypeScript
 - Vite
 - Tailwind CSS
-- localStorage for data persistence
+- Supabase for auth/data (incremental migration)
 
 ## Current Status
 
@@ -68,8 +80,7 @@ All users have the password: `password`
 **Phase 2: Proposal Creation ✅**
 - [x] Create proposal modal
 - [x] Emoji selection from pool
-- [x] Event vs Sejour toggle
-- [x] New proposal action in the main view
+- [x] Explicit Event/Sejour entry buttons
 - [x] Activity selection integrated into calendar workflow
 
 **Phase 3: Individual Calendar ✅**
@@ -81,9 +92,20 @@ All users have the password: `password`
 
 **Phase 4: Shared Calendar View ✅**
 - [x] Aggregate view showing all users on a single calendar
-- [x] Proposal filtering and "Display all" toggle
-- [x] Consensus detection and highlighting
+- [x] Proposal filtering modes and type-aware rendering
+- [x] Availability and attendee visibility counts
 - [x] User initials display (other users only)
+
+**Phase 6: AI Assistant (In Progress)**
+- [x] AI-first landing experience (Assistant tab first)
+- [x] Read-only AI panel in app
+- [x] Dev orchestrator endpoint (`/ai/chat`)
+- [x] OpenRouter model coupling in dev orchestrator
+- [x] Deterministic tools for confirmed activities/availability
+- [x] Follow-up attendee context handling
+- [ ] Approval-gated write actions
+- [ ] Rich visual answer cards (maps/images)
+- [ ] Server-side audit logs and approvals
 
 **Phase 5: Activity Details (Next)**
 - [x] Activity details drill-down entry point
@@ -101,8 +123,9 @@ All users have the password: `password`
 
 - `docs/activity-details-stage2.md`
 - `docs/icon-activity-translation.md`
-- `docs/handoff-2026-02-16.md`
 - `docs/handoff-2026-02-17.md`
+- `docs/handoff-2026-02-18.md`
+- `docs/terminology-taxonomy.md`
 - `docs/current-architecture-truth.md`
 - `docs/supabase/README.md`
 - `docs/supabase/001_initial_group_aware_schema.sql`
@@ -114,6 +137,7 @@ All users have the password: `password`
 - `docs/plan-2-deployment-dokploy-vps-and-vercel.md`
 - `docs/plan-3-ai-orchestrator.md`
 - `docs/plan-4-slack-integration.md`
+- `docs/plan-5-ai-implementation-backlog.md`
 - `docs/implementation-roadmap-overview.md`
 - `docs/execution-tracker-2026-02-17.md`
 - `docs/syncup-vs-mtup-methods-and-trajectory-2026-02-17.md`

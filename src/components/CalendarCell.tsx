@@ -61,7 +61,7 @@ export function CalendarCell({
   };
 
   // Get proposals with users to display
-  const proposalsWithUsers = proposalUsersMap 
+  const proposalsWithUsers = proposalUsersMap
     ? Array.from(proposalUsersMap.entries())
         .map(([proposalId, users]) => ({
           proposal: proposals.find((p) => p.id === proposalId),
@@ -71,11 +71,14 @@ export function CalendarCell({
         .slice(0, 6) // Max 6 proposals per cell
     : [];
 
+  const hasSejour = proposalsWithUsers.some((item) => item.proposal!.type === 'sejour');
+
   return (
     <div
       className={`
         relative min-h-[100px] border border-gray-200 dark:border-slate-700 p-2 select-none transition-colors
         ${!isCurrentMonth ? 'bg-gray-50 text-gray-400 dark:bg-slate-900 dark:text-slate-600' : 'bg-white dark:bg-slate-900'}
+        ${hasSejour && !isPast ? 'bg-teal-50/70 dark:bg-teal-950/20' : ''}
         ${today ? 'ring-2 ring-blue-500' : ''}
         ${isPast ? 'bg-gray-100 dark:bg-slate-800 opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800'}
       `}
@@ -99,7 +102,11 @@ export function CalendarCell({
             return (
               <div
                 key={item.proposal!.id}
-                className={`w-full flex items-center gap-1 whitespace-nowrap overflow-hidden ${
+                className={`w-full flex items-center gap-1 whitespace-nowrap overflow-hidden rounded px-1 ${
+                  item.proposal!.type === 'sejour'
+                    ? 'bg-teal-100/80 border border-dashed border-teal-400 dark:bg-teal-900/30 dark:border-teal-700'
+                    : ''
+                } ${
                   isCurrentUserMarked ? 'opacity-100' : 'opacity-50'
                 }`}
                 title={`${item.proposal!.title}: ${item.users

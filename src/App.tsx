@@ -2,8 +2,8 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { ProposalProvider } from '@/lib/ProposalContext';
 import { Login } from '@/components/Login';
 import { Dashboard } from '@/components/Dashboard';
-import { AppView } from '@/components/AppView';
 import { ThemeProvider } from '@/lib/ThemeContext';
+import { PrimaryExperience } from '@/components/PrimaryExperience';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
@@ -23,7 +23,7 @@ function AppContent() {
   return (
     <ProposalProvider>
       <Dashboard>
-        <AppView />
+        <PrimaryExperience />
       </Dashboard>
     </ProposalProvider>
   );

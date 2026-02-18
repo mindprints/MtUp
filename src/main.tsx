@@ -10,6 +10,9 @@ if (runtimeConfig.dataSource === 'supabase') {
 }
 
 console.info(`[mtUp] data source: ${runtimeConfig.dataSource}`)
+console.info(
+  `[mtUp] ai assistant: ${runtimeConfig.aiAssistantEnabled ? 'enabled' : 'disabled'} (${runtimeConfig.orchestratorBaseUrl})`
+)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

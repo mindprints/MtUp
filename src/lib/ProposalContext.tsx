@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/AuthContext';
 type ProposalContextType = {
   groups: GroupSummary[];
   activeGroupId: string | null;
+  groupUsers: GroupSummaryUser[];
   setActiveGroupId: (groupId: string | null) => void;
   proposals: Proposal[];
   availabilities: Availability[];
@@ -69,12 +70,19 @@ type ProposalContextType = {
   refresh: () => void;
 };
 
+type GroupSummaryUser = {
+  id: string;
+  name: string;
+  isAdmin: boolean;
+};
+
 const ProposalContext = createContext<ProposalContextType | undefined>(undefined);
 
 export function ProposalProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [groups, setGroups] = useState<GroupSummary[]>([]);
   const [activeGroupId, setActiveGroupIdState] = useState<string | null>(null);
+  const [groupUsers, setGroupUsers] = useState<GroupSummaryUser[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [availabilities, setAvailabilities] = useState<Availability[]>([]);
   const [decisionConfigs, setDecisionConfigs] = useState<ProposalDecisionConfig[]>(
@@ -120,6 +128,13 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     const data = storage.getData();
     setGroups([]);
     setActiveGroupIdState(null);
+    setGroupUsers(
+      data.users.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        isAdmin: entry.isAdmin,
+      }))
+    );
     setProposals(data.proposals);
     setAvailabilities(data.availabilities);
     setDecisionConfigs(data.decisionConfigs);
@@ -137,6 +152,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setGroups([]);
       setActiveGroupIdState(null);
+      setGroupUsers([]);
       setProposals([]);
       setAvailabilities([]);
       setDecisionConfigs([]);
@@ -163,6 +179,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       if (groupIds.length === 0) {
         setGroups([]);
         setActiveGroupIdState(null);
+        setGroupUsers([]);
         setProposals([]);
         return;
       }
@@ -204,8 +221,58 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       setActiveGroupIdState(resolvedGroupId);
 
       if (!resolvedGroupId) {
+        setGroupUsers([]);
         setProposals([]);
         return;
+      }
+
+      const { data: memberRows, error: memberRowsError } = await supabase
+        .from('group_memberships')
+        .select('user_id')
+        .eq('group_id', resolvedGroupId);
+
+      if (memberRowsError) {
+        console.error('Failed to fetch group members:', memberRowsError);
+        return;
+      }
+
+      const memberIds = Array.from(
+        new Set(
+          ((memberRows || []) as Array<{ user_id: string }>)
+            .map((row) => row.user_id)
+            .filter(Boolean)
+        )
+      );
+
+      if (memberIds.length > 0) {
+        const { data: memberProfiles, error: memberProfilesError } = await supabase
+          .from('profiles')
+          .select('id, display_name, is_platform_admin')
+          .in('id', memberIds);
+
+        if (memberProfilesError) {
+          console.error('Failed to fetch member profiles:', memberProfilesError);
+          setGroupUsers(
+            memberIds.map((memberId) => ({
+              id: memberId,
+              name: 'User',
+              isAdmin: false,
+            }))
+          );
+        } else {
+          const mappedGroupUsers: GroupSummaryUser[] = memberIds.map((memberId) => {
+            const profile = (memberProfiles || []).find((entry) => entry.id === memberId);
+            return {
+              id: memberId,
+              name: profile?.display_name || 'User',
+              isAdmin: Boolean(profile?.is_platform_admin),
+            };
+          });
+
+          setGroupUsers(mappedGroupUsers);
+        }
+      } else {
+        setGroupUsers([]);
       }
 
       const { data: proposalData, error: proposalError } = await supabase
@@ -274,14 +341,31 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
 
   const addProposal = (proposal: Proposal) => {
     if (isSupabaseMode() && user) {
-      const targetGroupId = activeGroupId || groups[0]?.id || null;
-      if (!targetGroupId) {
-        console.error('Cannot create proposal: no active group available.');
-        return;
-      }
-
       void (async () => {
         const supabase = getSupabaseClient();
+        let targetGroupId = activeGroupId || groups[0]?.id || null;
+
+        // Handle creation attempts before initial group context has resolved.
+        if (!targetGroupId) {
+          const { data: membershipRows, error: membershipLookupError } = await supabase
+            .from('group_memberships')
+            .select('group_id')
+            .eq('user_id', user.id)
+            .limit(1);
+
+          if (membershipLookupError) {
+            console.error('Cannot resolve group for proposal creation:', membershipLookupError);
+            return;
+          }
+
+          targetGroupId = membershipRows?.[0]?.group_id || null;
+        }
+
+        if (!targetGroupId) {
+          console.error('Cannot create proposal: no active group available.');
+          return;
+        }
+
         const { error } = await supabase.from('proposals').insert({
           id: proposal.id,
           group_id: targetGroupId,
@@ -294,6 +378,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
         });
         if (error) {
           console.error('Failed to create proposal:', error);
+          refresh();
           return;
         }
         if (!activeGroupId) {
@@ -531,6 +616,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       value={{
         groups,
         activeGroupId,
+        groupUsers,
         setActiveGroupId: (groupId) => setActiveGroupIdState(groupId),
         proposals,
         availabilities,
