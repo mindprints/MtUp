@@ -1,26 +1,26 @@
-# Schedule App
+# MtUp (Snooky)
 
-A collaborative scheduling application for friends to coordinate events and trips.
+MtUp is a social planning app for groups coordinating events and trips.  
+Snooky is the in-app coordination agent and now the primary planning surface.
 
-## Features (In Development)
+## Current Features
 
-- ✅ User authentication (5 mock users)
-- ✅ Supabase-backed auth, proposals, and availabilities in dev mode
-- ✅ Activity proposals with emoji identifiers
-- ✅ Explicit `+ Event` / `+ Sejour` creation flow
-- ✅ Individual calendar with click-and-drag availability marking
-- ✅ Day/Month/Year calendar views
-- ✅ Single calendar with `Display All` / `My Proposals` / `My Choices` / `Selected` filters
-- ✅ Proposal cards with proposer, availability counts, and voter counts
-- ✅ Color-coded availability visualization
-- ✅ Activity Details drill-down (time/place/requirements)
-- ✅ Manual confirmation workflow (creator/admin)
-- ✅ Sejour overlap-window option generation
-- ✅ AI-first landing with assistant/workspace tabs
-- ✅ Local AI dev orchestrator + OpenRouter coupling (read-only tools)
-- ✅ Dark mode toggle
-- 🚧 Comments and specificity refinement
-- 🚧 Activity status transitions
+- ✅ User auth (mock + Supabase mode)
+- ✅ Supabase-backed proposals + availabilities in dev mode
+- ✅ Snooky-first experience with proposal feed in `What's Up?`
+- ✅ AI proposal drafting + in-chat editable proposal form
+- ✅ AI proposal creation in app (`Propose`)
+- ✅ Proposer auto-affirmation/availability assumptions in Snooky flow
+- ✅ Proposal postcard cards (dominant image + compact flags + collapsible detail drawers)
+- ✅ One-click `I'm available as proposed`
+- ✅ Unified `Suggest Alternatives` modal (date/time/place deltas)
+- ✅ Attributed proposal contributions/deviations (local v1 thread store)
+- ✅ Snooky local memory v1 (capture, confirm, edit note, dismiss)
+- ✅ Fictional seed personas for 5 Stockholm participants + group seed context
+- ✅ OpenRouter-backed thumbnail generation for proposal cards
+- ✅ Dark mode + device preview toggle (phone/tablet/desktop simulation)
+- 🚧 Persistence migration for proposal contributions/memory/thumbnails to server storage
+- 🚧 Richer suggestion workflows + approval/audit hardening
 
 ## Setup
 
@@ -34,6 +34,12 @@ npm run dev
 # Run local AI orchestrator (optional, for AI modal in dev)
 npm run ai:dev
 
+# Restart AI orchestrator + Vite (new windows)
+npm run dev:restart
+
+# Restart AI orchestrator + Vite (same terminal)
+npm run dev:restart:here
+
 # Build for production
 npm run build
 
@@ -44,12 +50,22 @@ npm run test:run
 npm run test:e2e
 ```
 
-To enable AI modal in dev:
+To enable Snooky + local orchestrator in dev:
 - Set `VITE_AI_ASSISTANT_ENABLED=true`
 - Set `VITE_ORCHESTRATOR_BASE_URL=http://localhost:8787`
 - Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`
 - Set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL`
-- Run `npm run ai:dev` in a second terminal
+- Run `npm run ai:dev` in a second terminal (or use `npm run dev:restart:here`)
+
+To enable proposal thumbnail generation in Snooky:
+- Set `VITE_THUMBNAIL_PROVIDER=openrouter`
+- Set `VITE_THUMBNAIL_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+- Set `VITE_THUMBNAIL_OPENROUTER_MODEL=google/gemini-3.1-flash-image-preview`
+- Set `VITE_THUMBNAIL_OPENROUTER_API_KEY=...`
+  - fallback supported: `VITE_OPENROUTER_API_KEY`
+
+Important:
+- Make sure `.env.local` uses `VITE_ORCHESTRATOR_BASE_URL=...` with no leading space before the key.
 
 ## Mock Users
 
@@ -71,53 +87,15 @@ All users have the password: `password`
 
 ## Current Status
 
-**Phase 1: Authentication ✅**
-- [x] User login/logout
-- [x] localStorage integration
-- [x] Auth context
-- [x] Basic dashboard layout
-
-**Phase 2: Proposal Creation ✅**
-- [x] Create proposal modal
-- [x] Emoji selection from pool
-- [x] Explicit Event/Sejour entry buttons
-- [x] Activity selection integrated into calendar workflow
-
-**Phase 3: Individual Calendar ✅**
-- [x] Month grid view
-- [x] Click-and-drag date selection
-- [x] Emoji marking for proposals
-- [x] Visual indicators for availability
-- [x] Month navigation (Previous/Today/Next)
-
-**Phase 4: Shared Calendar View ✅**
-- [x] Aggregate view showing all users on a single calendar
-- [x] Proposal filtering modes and type-aware rendering
-- [x] Availability and attendee visibility counts
-- [x] User initials display (other users only)
-
-**Phase 6: AI Assistant (In Progress)**
-- [x] AI-first landing experience (Assistant tab first)
-- [x] Read-only AI panel in app
-- [x] Dev orchestrator endpoint (`/ai/chat`)
-- [x] OpenRouter model coupling in dev orchestrator
-- [x] Deterministic tools for confirmed activities/availability
-- [x] Follow-up attendee context handling
-- [ ] Approval-gated write actions
-- [ ] Rich visual answer cards (maps/images)
-- [ ] Server-side audit logs and approvals
-
-**Phase 5: Activity Details (Next)**
-- [x] Activity details drill-down entry point
-- [x] Time/place/requirements tabs
-- [x] Voting modes (single, multi, ranked)
-- [x] Informational analytics (first-choice + ranked scoring)
-- [x] Manual confirmation (creator/admin)
-- [x] Sejour overlap-window candidate generation
-- [ ] Comments section
-- [ ] Specificity refinement workflow
-- [ ] Status transitions (proposed → scheduled → confirmed)
-- [ ] Edit/delete proposals
+**Snooky-First Proposal Workflow (Current Focus)**
+- [x] Proposal feed inside Snooky (`What's Up?`)
+- [x] Baseline + participant states + attributed alternatives
+- [x] One-click affirm + unified alternatives modal
+- [x] OpenRouter thumbnail generation on proposal cards
+- [x] Memory v1 capture + review + seeded personas
+- [ ] Persist thread/memory/thumbnail artifacts server-side
+- [ ] Add richer alternative voting and narrowing UX
+- [ ] Add audit-grade logs for AI-assisted proposal actions
 
 ## Stage 2 Docs
 
@@ -125,8 +103,11 @@ All users have the password: `password`
 - `docs/icon-activity-translation.md`
 - `docs/handoff-2026-02-17.md`
 - `docs/handoff-2026-02-18.md`
+- `docs/handoff-2026-02-25.md`
+- `docs/handoff-2026-02-26.md`
 - `docs/terminology-taxonomy.md`
 - `docs/current-architecture-truth.md`
+- `docs/seed-personas.md`
 - `docs/supabase/README.md`
 - `docs/supabase/001_initial_group_aware_schema.sql`
 - `docs/supabase/002_seed_example_profiles_and_group.sql`

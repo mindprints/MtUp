@@ -78,6 +78,13 @@ function shouldListAttendees(message) {
   );
 }
 
+function shouldProposeActivity(message) {
+  const hasPlanningVerb = /\b(propose|plan|suggest|organize)\b/.test(message);
+  const hasActivityNoun =
+    /\b(activity|event|night out|night on the town|outing|dinner|drinks)\b/.test(message);
+  return hasPlanningVerb && hasActivityNoun;
+}
+
 async function callOpenRouter(messages, options = {}) {
   if (!openRouterApiKey) return null;
   const response = await fetch(`${openRouterBaseUrl}/chat/completions`, {
@@ -108,6 +115,7 @@ async function classifyIntent(message) {
   if (shouldListConfirmed(message)) return 'list_confirmed';
   if (shouldListMyAvailability(message)) return 'list_my_availability';
   if (shouldListAttendees(message)) return 'list_attendees';
+  if (shouldProposeActivity(message)) return 'propose_activity';
 
   if (!openRouterApiKey) {
     return 'unsupported';
@@ -118,7 +126,7 @@ async function classifyIntent(message) {
       {
         role: 'system',
         content:
-        'Classify the user request into exactly one label: list_confirmed, list_my_availability, list_attendees, unsupported. Respond with only the label.',
+        'Classify the user request into exactly one label: list_confirmed, list_my_availability, list_attendees, propose_activity, unsupported. Respond with only the label.',
       },
       {
         role: 'user',
@@ -130,6 +138,7 @@ async function classifyIntent(message) {
       result === 'list_confirmed' ||
       result === 'list_my_availability' ||
       result === 'list_attendees' ||
+      result === 'propose_activity' ||
       result === 'unsupported'
     ) {
       return result;
@@ -141,6 +150,7 @@ async function classifyIntent(message) {
   if (shouldListConfirmed(message)) return 'list_confirmed';
   if (shouldListMyAvailability(message)) return 'list_my_availability';
   if (shouldListAttendees(message)) return 'list_attendees';
+  if (shouldProposeActivity(message)) return 'propose_activity';
   return 'unsupported';
 }
 
@@ -377,6 +387,491 @@ function getCurrentWeekBounds(now = new Date()) {
   };
 }
 
+function getNextWeekBounds(now = new Date()) {
+  const current = new Date(now);
+  current.setHours(0, 0, 0, 0);
+  const day = current.getDay(); // 0=Sun..6=Sat
+  const offsetToMonday = day === 0 ? -6 : 1 - day;
+  const start = new Date(current);
+  start.setDate(current.getDate() + offsetToMonday + 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    startIso: formatIsoDate(start),
+    endIso: formatIsoDate(end),
+    startDate: start,
+  };
+}
+
+const WEEKDAY_MATCHERS = [
+  { label: 'Monday', offset: 0, pattern: /\b(mon|monday)\b/ },
+  { label: 'Tuesday', offset: 1, pattern: /\b(tue|tues|tuesday)\b/ },
+  { label: 'Wednesday', offset: 2, pattern: /\b(wed|weds|wednesday)\b/ },
+  { label: 'Thursday', offset: 3, pattern: /\b(thu|thur|thurs|thursday)\b/ },
+  { label: 'Friday', offset: 4, pattern: /\b(fri|friday)\b/ },
+  { label: 'Saturday', offset: 5, pattern: /\b(sat|saturday)\b/ },
+  { label: 'Sunday', offset: 6, pattern: /\b(sun|sunday)\b/ },
+];
+
+function parseRequestedWeekdays(message) {
+  return WEEKDAY_MATCHERS.filter((entry) => entry.pattern.test(message));
+}
+
+function getWeekendBoundsForDate(now = new Date(), offsetWeeks = 0) {
+  const current = new Date(now);
+  current.setHours(0, 0, 0, 0);
+  const day = current.getDay(); // 0 Sun ... 6 Sat
+  const daysUntilSaturday = (6 - day + 7) % 7;
+  const saturday = new Date(current);
+  saturday.setDate(current.getDate() + daysUntilSaturday + offsetWeeks * 7);
+  const sunday = new Date(saturday);
+  sunday.setDate(saturday.getDate() + 1);
+  return {
+    startIso: formatIsoDate(saturday),
+    endIso: formatIsoDate(sunday),
+    label: `${formatIsoDate(saturday)} to ${formatIsoDate(sunday)}`,
+  };
+}
+
+function getMonthIndexFromName(message) {
+  const months = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ];
+  for (let i = 0; i < months.length; i += 1) {
+    if (message.includes(months[i])) return i;
+  }
+  return null;
+}
+
+function getOrdinalWeekRangeInMonth(now, monthIndex, ordinalWord) {
+  const ordinals = {
+    first: 0,
+    second: 1,
+    third: 2,
+    fourth: 3,
+  };
+  const ordinalIndex = ordinals[ordinalWord];
+  if (ordinalIndex === undefined) return null;
+
+  const currentYear = now.getFullYear();
+  const monthHasPassed = monthIndex < now.getMonth();
+  const year = monthHasPassed ? currentYear + 1 : currentYear;
+  const monthStart = new Date(year, monthIndex, 1);
+  monthStart.setHours(0, 0, 0, 0);
+  const offsetToMonday = monthStart.getDay() === 0 ? 1 : ((8 - monthStart.getDay()) % 7);
+  const firstMonday = new Date(monthStart);
+  firstMonday.setDate(monthStart.getDate() + offsetToMonday);
+  const start = new Date(firstMonday);
+  start.setDate(firstMonday.getDate() + ordinalIndex * 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return {
+    startIso: formatIsoDate(start),
+    endIso: formatIsoDate(end),
+    label: `${ordinalWord} week of ${start.toLocaleString('en-US', { month: 'long' })} (${formatIsoDate(start)} to ${formatIsoDate(end)})`,
+  };
+}
+
+function extractJsonObject(text) {
+  const value = String(text || '').trim();
+  if (!value) return null;
+  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fenced?.[1] || value).trim();
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeModelTimingResult(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const kind = raw.kind;
+  if (kind === 'dates' && Array.isArray(raw.dates)) {
+    const dates = raw.dates
+      .filter((d) => d && typeof d.isoDate === 'string')
+      .map((d) => ({
+        label: typeof d.label === 'string' && d.label.trim() ? d.label.trim() : d.isoDate,
+        isoDate: d.isoDate,
+      }));
+    if (dates.length > 0) return { kind: 'dates', dates };
+  }
+  if (
+    kind === 'window' &&
+    raw.window &&
+    typeof raw.window.startIso === 'string' &&
+    typeof raw.window.endIso === 'string'
+  ) {
+    return {
+      kind: 'window',
+      window: {
+        label:
+          typeof raw.window.label === 'string' && raw.window.label.trim()
+            ? raw.window.label.trim()
+            : `${raw.window.startIso} to ${raw.window.endIso}`,
+        startIso: raw.window.startIso,
+        endIso: raw.window.endIso,
+      },
+    };
+  }
+  return null;
+}
+
+function normalizeWhitespace(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripTrailingPunctuation(value) {
+  return normalizeWhitespace(value).replace(/[.,;:!?]+$/, '').trim();
+}
+
+function inferBasicPlaceFromMessage(message) {
+  const atMatch = message.match(/\bat\s+([^.,!?\n]+?)(?:\s+(?:on|this|next|tomorrow|at)\b|[.!?]|$)/i);
+  if (atMatch?.[1]) return stripTrailingPunctuation(atMatch[1]);
+
+  const inMatch = message.match(/\bin\s+([^.,!?\n]+?)(?:\s+(?:on|this|next|tomorrow|at)\b|[.!?]|$)/i);
+  if (inMatch?.[1]) return stripTrailingPunctuation(inMatch[1]);
+
+  return '';
+}
+
+function inferBasicRequirementFromMessage(message) {
+  const bringMatch = message.match(/\b(bring [^.!\n]+)(?:[.!?]|$)/i);
+  if (bringMatch?.[1]) return stripTrailingPunctuation(bringMatch[1]);
+
+  const requirementMatch = message.match(/\b(?:must|please)\s+([^.!\n]+)(?:[.!?]|$)/i);
+  if (requirementMatch?.[1]) return stripTrailingPunctuation(requirementMatch[1]);
+
+  return '';
+}
+
+function inferBasicTimeFromMessage(message) {
+  const m = message.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i);
+  if (m?.[1]) return normalizeWhitespace(m[1]).toUpperCase();
+  return '';
+}
+
+function inferBasicTitleFromMessage(message) {
+  if (/\blunch\b/i.test(message)) return 'Lunch';
+  if (/\bdinner\b/i.test(message)) return 'Dinner';
+  if (/\bbrunch\b/i.test(message)) return 'Brunch';
+  if (/\bbreakfast\b/i.test(message)) return 'Breakfast';
+  if (/\bdrinks\b/i.test(message)) return 'Drinks';
+  if (/\bhike\b/i.test(message)) return 'Hike';
+  if (/\bnight on the town\b/i.test(message)) return 'Night on the Town';
+  if (/\bnight out\b/i.test(message)) return 'Night Out';
+  return '';
+}
+
+function normalizeModelProposalDraft(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const proposalType = raw.proposalType === 'sejour' ? 'sejour' : 'event';
+  const title = typeof raw.title === 'string' ? normalizeWhitespace(raw.title) : '';
+  const dates = typeof raw.dates === 'string' ? normalizeWhitespace(raw.dates) : '';
+  const times = typeof raw.times === 'string' ? normalizeWhitespace(raw.times) : '';
+  const invitees = typeof raw.invitees === 'string' ? normalizeWhitespace(raw.invitees) : '';
+  const place = typeof raw.place === 'string' ? normalizeWhitespace(raw.place) : '';
+  const requirements =
+    typeof raw.requirements === 'string' ? normalizeWhitespace(raw.requirements) : '';
+  const comments = typeof raw.comments === 'string' ? normalizeWhitespace(raw.comments) : '';
+
+  return {
+    proposalType,
+    title,
+    dates,
+    times,
+    invitees,
+    place,
+    requirements,
+    comments,
+  };
+}
+
+async function extractProposalDraftFields(rawMessage, temporalRequest) {
+  const message = normalizeMessage(rawMessage);
+  const now = new Date();
+  const todayIso = formatIsoDate(now);
+
+  const deterministic = {
+    proposalType:
+      /\btrip\b|\btravel\b|\bvacation\b|\bweekend getaway\b|\bsejour\b/.test(message)
+        ? 'sejour'
+        : 'event',
+    title: inferBasicTitleFromMessage(rawMessage),
+    dates:
+      temporalRequest.kind === 'dates'
+        ? temporalRequest.dates.map((d) => d.isoDate).join(', ')
+        : temporalRequest.kind === 'window'
+        ? `${temporalRequest.window.startIso} to ${temporalRequest.window.endIso}`
+        : '',
+    times: inferBasicTimeFromMessage(rawMessage),
+    invitees:
+      /\binvite everyone\b|\binvite all\b|\bour group\b|\bgroup\b/.test(message)
+        ? 'Everyone in active group'
+        : 'Everyone in active group',
+    place: inferBasicPlaceFromMessage(rawMessage),
+    requirements: inferBasicRequirementFromMessage(rawMessage),
+    comments: '',
+  };
+
+  if (!openRouterApiKey) {
+    return deterministic;
+  }
+
+  try {
+    const prompt = [
+      {
+        role: 'system',
+        content:
+          `Extract an activity proposal form from the user message. Today is ${todayIso}. ` +
+          `Return JSON only with keys: ` +
+          `proposalType ("event"|"sejour"), title, dates, times, invitees, place, requirements, comments. ` +
+          `Rules: resolve relative dates (tomorrow, this coming weekend, first week in April) into ISO dates. ` +
+          `Use "YYYY-MM-DD" or "YYYY-MM-DD to YYYY-MM-DD" for dates. ` +
+          `Infer title from the activity (e.g. lunch, dinner, hike). ` +
+          `Put constraints like "Bring your own wine" in requirements. ` +
+          `If a field is unknown, use empty string. No prose.`,
+      },
+      {
+        role: 'user',
+        content: rawMessage,
+      },
+    ];
+
+    const modelText = await callOpenRouter(prompt, { maxTokens: 320, temperature: 0 });
+    const parsed = normalizeModelProposalDraft(extractJsonObject(modelText));
+    if (!parsed) return deterministic;
+
+    return {
+      proposalType: parsed.proposalType || deterministic.proposalType,
+      title: parsed.title || deterministic.title,
+      dates: parsed.dates || deterministic.dates,
+      times: parsed.times || deterministic.times,
+      invitees: parsed.invitees || deterministic.invitees,
+      place: parsed.place || deterministic.place,
+      requirements: parsed.requirements || deterministic.requirements,
+      comments: parsed.comments || deterministic.comments,
+    };
+  } catch (error) {
+    console.warn(`[ai-orchestrator] proposal field extraction fallback: ${String(error)}`);
+    return deterministic;
+  }
+}
+
+async function resolveTemporalRequest(rawMessage) {
+  const message = normalizeMessage(rawMessage);
+  const now = new Date();
+
+  // Deterministic shortcuts for common phrases and offline fallback.
+  if (/\btomorrow\b/.test(message)) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + 1);
+    return { kind: 'dates', dates: [{ label: `Tomorrow (${formatIsoDate(d)})`, isoDate: formatIsoDate(d) }] };
+  }
+  if (/\b(this coming weekend|coming weekend|this weekend)\b/.test(message)) {
+    const weekend = getWeekendBoundsForDate(now, 0);
+    return { kind: 'window', window: weekend };
+  }
+  if (/\bnext weekend\b/.test(message)) {
+    const weekend = getWeekendBoundsForDate(now, 1);
+    return { kind: 'window', window: weekend };
+  }
+  const ordinalWeekMatch = message.match(/\b(first|second|third|fourth)\s+week\s+(?:of|in)\s+([a-z]+)/);
+  if (ordinalWeekMatch) {
+    const ordinalWord = ordinalWeekMatch[1];
+    const monthIndex = getMonthIndexFromName(message);
+    if (monthIndex !== null) {
+      const range = getOrdinalWeekRangeInMonth(now, monthIndex, ordinalWord);
+      if (range) return { kind: 'window', window: range };
+    }
+  }
+  if (/\bnext week\b/.test(message)) {
+    const nextWeekBounds = getNextWeekBounds(now);
+    const weekdays = parseRequestedWeekdays(message);
+    if (weekdays.length > 0) {
+      const dates = weekdays.map((weekday) => {
+        const date = new Date(nextWeekBounds.startDate);
+        date.setDate(nextWeekBounds.startDate.getDate() + weekday.offset);
+        return {
+          label: `${weekday.label} (${formatIsoDate(date)})`,
+          isoDate: formatIsoDate(date),
+        };
+      });
+      return { kind: 'dates', dates };
+    }
+    return {
+      kind: 'window',
+      window: {
+        label: `Next week (${nextWeekBounds.startIso} to ${nextWeekBounds.endIso})`,
+        startIso: nextWeekBounds.startIso,
+        endIso: nextWeekBounds.endIso,
+      },
+    };
+  }
+
+  // Model-grounded extraction for broader natural language.
+  if (openRouterApiKey) {
+    try {
+      const todayIso = formatIsoDate(now);
+      const prompt = [
+        {
+          role: 'system',
+          content:
+            `Extract scheduling date intent from a user message. Today is ${todayIso}. ` +
+            `Return JSON only with one shape: ` +
+            `{"kind":"dates","dates":[{"label":"...","isoDate":"YYYY-MM-DD"}]} ` +
+            `or {"kind":"window","window":{"label":"...","startIso":"YYYY-MM-DD","endIso":"YYYY-MM-DD"}} ` +
+            `or {"kind":"unknown"}. No prose.`,
+        },
+        {
+          role: 'user',
+          content: rawMessage,
+        },
+      ];
+      const modelText = await callOpenRouter(prompt, { maxTokens: 220, temperature: 0 });
+      const parsed = normalizeModelTimingResult(extractJsonObject(modelText));
+      if (parsed) return parsed;
+    } catch (error) {
+      console.warn(`[ai-orchestrator] temporal parse fallback: ${String(error)}`);
+    }
+  }
+
+  return { kind: 'unknown' };
+}
+
+function toTitleCase(value) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function inferProposalTitleFromMessage(message) {
+  if (/\bnight on the town\b/.test(message)) return 'Night on the Town';
+  if (/\bnight out\b/.test(message)) return 'Night Out';
+  if (/\bdinner\b/.test(message)) return 'Group Dinner';
+  if (/\bdrinks\b/.test(message)) return 'Drinks';
+  if (/\bhike\b/.test(message)) return 'Hike';
+  if (/\btrip\b/.test(message)) return 'Trip';
+  if (/\bweekend getaway\b/.test(message)) return 'Weekend Getaway';
+
+  const explicitPhrase = message.match(
+    /\b(?:propose|plan|suggest|organize)\s+(?:a|an)?\s*([a-z0-9][a-z0-9\s'-]{2,60}?)(?:\s+(?:on|for|next week|this week|invite)\b|[.!?]|$)/
+  );
+  const raw = explicitPhrase?.[1]?.trim();
+  if (raw) return toTitleCase(raw);
+
+  return 'New Activity Proposal';
+}
+
+async function buildActivityProposalPreview(rawMessage) {
+  const message = normalizeMessage(rawMessage);
+  const temporalRequest = await resolveTemporalRequest(rawMessage);
+  const extractedFields = await extractProposalDraftFields(rawMessage, temporalRequest);
+  const inviteEveryone = /\binvite everyone\b|\binvite all\b/.test(message);
+  const groupAudienceRequested = /\bour group\b|\bgroup\b/.test(message);
+  const looksLikeNightOut =
+    /\bnight on the town\b|\bnight out\b|\bdinner\b|\bdrinks\b/.test(message);
+  const inferredTitle = extractedFields.title || inferProposalTitleFromMessage(message);
+
+  const activityLabel = looksLikeNightOut ? 'night on the town' : 'group activity';
+
+  const candidateDates =
+    temporalRequest.kind === 'dates' ? temporalRequest.dates.map((entry) => entry.label) : [];
+  const candidateWindowLabel =
+    temporalRequest.kind === 'window' ? temporalRequest.window.label : null;
+  const primaryDateIso =
+    temporalRequest.kind === 'dates' && temporalRequest.dates[0]
+      ? temporalRequest.dates[0].isoDate
+      : null;
+  const rangeDateValue =
+    temporalRequest.kind === 'window'
+      ? `${temporalRequest.window.startIso} to ${temporalRequest.window.endIso}`
+      : null;
+  const datesFieldValue = primaryDateIso || rangeDateValue || '';
+  const inviteesFieldValue =
+    extractedFields.invitees ||
+    (inviteEveryone || groupAudienceRequested ? 'Everyone in active group' : 'Everyone in active group');
+  const proposalType = extractedFields.proposalType === 'sejour' ? 'sejour' : 'event';
+  const timeFieldValue = extractedFields.times || (proposalType === 'sejour' ? '' : '');
+  const placeFieldValue = extractedFields.place || '';
+  const requirementsFieldValue = extractedFields.requirements || '';
+  const commentsFieldValue = extractedFields.comments || '';
+  const resolvedDatesFieldValue = extractedFields.dates || datesFieldValue;
+
+  const assistantLines = [
+    `I drafted a ${activityLabel} proposal form for you.`,
+    'Edit any fields, then click Propose.',
+  ];
+
+  const summary = [
+    `Propose ${activityLabel}`,
+    temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
+    temporalRequest.kind === 'dates'
+      ? `(${temporalRequest.dates.map((d) => d.label.replace(/\s*\(\d{4}-\d{2}-\d{2}\)/, '')).join(' / ')})`
+      : '',
+    inviteEveryone || groupAudienceRequested ? 'and invite everyone in group' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const impact = [
+    candidateDates.length > 0
+      ? `Candidate dates: ${candidateDates.join(', ')}`
+      : candidateWindowLabel
+      ? `Candidate window: ${candidateWindowLabel}`
+      : 'Candidate date to be chosen',
+    `Invitees: ${inviteesFieldValue}`,
+  ].join('. ') + '.';
+
+  return {
+    assistantText: assistantLines.join('\n'),
+    actionProposal: {
+      id: randomUUID(),
+      type: 'create_activity_proposal_and_invite_draft',
+      summary,
+      requiresApproval: true,
+      impact,
+      payload: {
+        kind: 'create_proposal',
+        proposalDraft: {
+          title: inferredTitle,
+          type: proposalType,
+          emoji: '🎉',
+          specifics: {
+            ...(resolvedDatesFieldValue ? { date: resolvedDatesFieldValue } : {}),
+            ...(timeFieldValue ? { time: timeFieldValue } : {}),
+            ...(placeFieldValue ? { location: placeFieldValue } : {}),
+          },
+          form: {
+            dates: resolvedDatesFieldValue,
+            times: timeFieldValue,
+            invitees: inviteesFieldValue,
+            place: placeFieldValue,
+            requirements: requirementsFieldValue,
+            comments: commentsFieldValue,
+          },
+        },
+      },
+    },
+  };
+}
+
 function detectAvailabilityWindow(message) {
   if (/\bthis week\b/.test(message)) {
     const bounds = getCurrentWeekBounds(new Date());
@@ -522,6 +1017,8 @@ const server = http.createServer(async (req, res) => {
         const intent = await classifyIntent(normalizedMessage);
         let rows = [];
         let assistantText = '';
+        let responseMode = 'answer';
+        let actionProposal = null;
         if (intent === 'list_confirmed') {
           const confirmedRows = await fetchConfirmedProposals({ authToken, activeGroupId });
           rows = Array.isArray(confirmedRows) ? confirmedRows : [];
@@ -587,6 +1084,11 @@ const server = http.createServer(async (req, res) => {
               attendees,
             });
           }
+        } else if (intent === 'propose_activity') {
+          const preview = await buildActivityProposalPreview(rawMessage);
+          assistantText = preview.assistantText;
+          actionProposal = preview.actionProposal;
+          responseMode = 'action_proposal';
         } else {
           assistantText = await generateNaturalLanguageAnswer({
             userMessage: rawMessage,
@@ -599,13 +1101,14 @@ const server = http.createServer(async (req, res) => {
 
         sendJson(res, 200, {
           threadId,
-          mode: 'answer',
+          mode: responseMode,
           assistantMessage: {
             id: randomUUID(),
             role: 'assistant',
             content: assistantText,
             createdAt: new Date().toISOString(),
           },
+          ...(actionProposal ? { actionProposal } : {}),
         });
       });
     } catch (error) {

@@ -43,8 +43,8 @@ Reasoning:
   - Deterministic, low-noise reminders and status messages.
 
 ## Step 4: AI Orchestrator (Read-Only to Action)
-- Start with read-only summarization and recommendation.
-- Add approval-gated actions.
+- Current state (2026-02-26): Snooky already supports in-app proposal drafting and proposal creation flows.
+- Next phase: move from local-first Snooky artifacts to server-persisted, approval/audit-grade action execution.
 - Integrate with Slack action paths only after auditability is stable.
 - Exit criteria:
   - Admin can safely approve AI-assisted operations with audit logs.
@@ -59,8 +59,8 @@ Reasoning:
 1. Milestone A: Supabase cutover complete.
 2. Milestone B: Production deploy + observability complete.
 3. Milestone C: Slack outbound + reminders live.
-4. Milestone D: AI read-only assistant live.
-5. Milestone E: AI approval-gated actions live.
+4. Milestone D: Snooky proposal-assist flows live (draft + create + proposal feed UX).
+5. Milestone E: AI approval-gated actions live with full server-side auditability.
 
 ## Practical Recommendations
 - Keep one feature flag per major migration (`data_source`, `slack_enabled`, `ai_assistant_enabled`).
@@ -79,7 +79,7 @@ Reasoning:
 4. Sprint 4:
   - Slack outbound notifications + channel mapping.
 5. Sprint 5:
-  - AI read-only assistant + audit log UI.
+  - Snooky server-persistence migration (proposal threads/memory/thumbnails) + audit log UI.
 6. Sprint 6:
   - AI approval workflow + guarded action execution.
 

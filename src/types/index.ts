@@ -103,3 +103,5 @@ export type AppData = {
 };
 
 export * from './ai';
+export * from './memory';
+export * from './proposalThreads';

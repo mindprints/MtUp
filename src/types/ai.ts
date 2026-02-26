@@ -13,6 +13,27 @@ export type AiActionProposal = {
   summary: string;
   requiresApproval: boolean;
   impact?: string;
+  payload?: {
+    kind: 'create_proposal';
+    proposalDraft: {
+      title: string;
+      type: 'event' | 'sejour';
+      emoji?: string;
+      specifics?: {
+        date?: string;
+        time?: string;
+        location?: string;
+      };
+      form?: {
+        dates?: string;
+        times?: string;
+        invitees?: string;
+        place?: string;
+        requirements?: string;
+        comments?: string;
+      };
+    };
+  };
 };
 
 export type AiChatRequest = {
@@ -22,6 +43,13 @@ export type AiChatRequest = {
     userId?: string;
     activeGroupId?: string | null;
     selectedProposalId?: string | null;
+    memoryHints?: Array<{
+      id: string;
+      factType: string;
+      status: string;
+      summary: string;
+      observedAt: string;
+    }>;
   };
 };
 

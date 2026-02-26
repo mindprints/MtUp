@@ -1,3 +1,7 @@
+# Historical Context
+This tracker reflects planning assumptions from February 17, 2026.
+For current runtime truth, see `docs/current-architecture-truth.md` and the latest handoff.
+
 # Execution Tracker (Starting 2026-02-17)
 
 ## Purpose

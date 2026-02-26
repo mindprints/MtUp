@@ -1,3 +1,7 @@
+# Historical Context
+This plan predates the current Snooky-first runtime and should be read as strategy context.
+For current runtime truth and near-term priorities, see `docs/current-architecture-truth.md` and the latest handoff.
+
 # Plan 4: Slack Integration (Messaging, Reminders, Notifications)
 
 ## Objective

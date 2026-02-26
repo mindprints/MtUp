@@ -2,6 +2,14 @@
 
 Date: 2026-02-18
 
+## Status Note (2026-02-26)
+- This plan contains historical "read-only phase" steps that are partially superseded.
+- Current runtime already includes:
+  - Snooky proposal drafting
+  - in-app proposal creation from AI flow
+  - Snooky proposal feed interaction patterns (affirm + alternatives)
+- Treat read-only references below as historical sequencing context, not current product behavior.
+
 ## Objective
 Add an in-app AI assistant that can answer scheduling questions, propose actions, and execute approved actions with role-based controls and auditability.
 

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "ai:dev": "node server/dev-orchestrator.mjs",
+    "dev:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-dev.ps1",
+    "dev:restart:here": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-dev-inline.ps1",
     "build": "tsc && vite build",
     "test": "vitest",
     "test:run": "vitest run",
@@ -15,6 +17,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.43.0",
     "@playwright/test": "^1.58.2",
     "@supabase/supabase-js": "^2.96.0",
     "date-fns": "^3.0.0",

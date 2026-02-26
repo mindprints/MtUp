@@ -22,8 +22,7 @@ import {
   formatDate,
   WEEKDAY_LABELS,
 } from '@/lib/dateUtils';
-import { generateId } from '@/lib/utils';
-import type { Availability, Proposal, User } from '@/types';
+import type { Proposal, User } from '@/types';
 
 type CalendarView = 'day' | 'month' | 'year';
 type DisplayMode = 'selected' | 'all' | 'mine' | 'my_choices';
@@ -76,14 +75,12 @@ export function IndividualCalendar({
     availabilities,
     decisionVotes,
     groupUsers,
-    setAvailability,
   } = useProposals();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarView>('month');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('selected');
-  const [isDragging, setIsDragging] = useState(false);
-  const [draggedDates, setDraggedDates] = useState<Set<string>>(new Set());
+  const [isDragging] = useState(false);
   const [detailsProposalId, setDetailsProposalId] = useState<string | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const touchStartYRef = useRef<number | null>(null);
@@ -273,123 +270,30 @@ export function IndividualCalendar({
     navigateByDelta(delta);
   };
 
-  const handleCellClick = (date: Date, ctrlKey: boolean) => {
-    if (!selectedProposalId) return;
-
-    const dateStr = formatDate(date);
-    const existingAvail = userAvailabilities.find((a) => a.proposalId === selectedProposalId);
-
-    if (ctrlKey) {
-      if (existingAvail && existingAvail.dates.includes(dateStr)) {
-        const dates = existingAvail.dates.filter((d) => d !== dateStr);
-
-        const updatedAvail: Availability = {
-          ...existingAvail,
-          dates,
-        };
-        setAvailability(updatedAvail);
-      }
-    } else {
-      if (existingAvail) {
-        const dates = existingAvail.dates.includes(dateStr)
-          ? existingAvail.dates
-          : [...existingAvail.dates, dateStr];
-
-        const updatedAvail: Availability = {
-          ...existingAvail,
-          dates,
-        };
-        setAvailability(updatedAvail);
-      } else {
-        const newAvail: Availability = {
-          id: generateId(),
-          userId: user.id,
-          proposalId: selectedProposalId,
-          dates: [dateStr],
-        };
-        setAvailability(newAvail);
-      }
-    }
+  const handleCellClick = (_date: Date, _ctrlKey: boolean) => {
+    // Calendar is display-only; interactions happen via proposal pills and event icons.
   };
 
   const handleProposalClick = (
     proposalId: string,
-    date: Date,
-    ctrlKey: boolean
+    _date: Date,
+    _ctrlKey: boolean
   ) => {
-    const dateStr = formatDate(date);
-    const existingAvail = userAvailabilities.find((a) => a.proposalId === proposalId);
-    const isCurrentlyMarked = Boolean(existingAvail?.dates.includes(dateStr));
-
-    if (ctrlKey) {
-      if (!existingAvail || !isCurrentlyMarked) return;
-      setAvailability({
-        ...existingAvail,
-        dates: existingAvail.dates.filter((d) => d !== dateStr),
-      });
-      return;
-    }
-
-    if (isCurrentlyMarked) {
-      setDetailsProposalId(proposalId);
-      setIsDetailsModalOpen(true);
-      return;
-    }
-
-    if (existingAvail) {
-      setAvailability({
-        ...existingAvail,
-        dates: [...existingAvail.dates, dateStr],
-      });
-      return;
-    }
-
-    setAvailability({
-      id: generateId(),
-      userId: user.id,
-      proposalId,
-      dates: [dateStr],
-    });
+    onSelectedProposalIdChange(proposalId);
+    setDetailsProposalId(proposalId);
+    setIsDetailsModalOpen(true);
   };
 
   const handleDragStart = (date: Date) => {
-    if (!selectedProposalId || calendarView !== 'month') return;
-
-    setIsDragging(true);
-    const dateStr = formatDate(date);
-    setDraggedDates(new Set([dateStr]));
+    void date;
   };
 
   const handleDragEnter = (date: Date) => {
-    if (isDragging && selectedProposalId && calendarView === 'month') {
-      const dateStr = formatDate(date);
-      setDraggedDates((prev) => new Set([...prev, dateStr]));
-    }
+    void date;
   };
 
   const handleDragEnd = () => {
-    if (!isDragging || !selectedProposalId) return;
-
-    const existingAvail = userAvailabilities.find(
-      (a) => a.proposalId === selectedProposalId
-    );
-
-    const allDates = new Set([
-      ...(existingAvail?.dates || []),
-      ...Array.from(draggedDates),
-    ]);
-
-    const updatedAvail: Availability = {
-      id: existingAvail?.id || generateId(),
-      userId: user.id,
-      proposalId: selectedProposalId,
-      dates: Array.from(allDates),
-    };
-
-    setAvailability(updatedAvail);
-
-    setIsDragging(false);
-    setDraggedDates(new Set());
+    // Calendar is display-only.
   };
 
   const isDateVisibleInCurrentView = (dateIso: string): boolean => {
@@ -479,7 +383,7 @@ export function IndividualCalendar({
         <>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-slate-200">
-              Select proposal to mark:
+              Proposals
             </label>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <button
@@ -535,7 +439,12 @@ export function IndividualCalendar({
                 const isSelected = selectedProposalId === proposal.id;
                 const isConfirmed = proposal.status === 'confirmed';
                 const creatorName = usersById.get(proposal.createdBy)?.name || proposal.createdBy;
-                const availableCount = availableUserIdsByProposal.get(proposal.id)?.size || 0;
+                const availableUserIds = Array.from(availableUserIdsByProposal.get(proposal.id) || []);
+                const availableCount = availableUserIds.length;
+                const availableNames = availableUserIds.map((personId) =>
+                  personId === user.id ? 'Me' : usersById.get(personId)?.name || personId
+                );
+                const proposerAvailable = availableUserIds.includes(proposal.createdBy);
                 const voterIds = Array.from(voterIdsByProposal.get(proposal.id) || []);
                 const voterNames = voterIds
                   .map((voterId) => (voterId === user.id ? 'Me' : usersById.get(voterId)?.name || voterId))
@@ -543,7 +452,11 @@ export function IndividualCalendar({
                 return (
                   <button
                     key={proposal.id}
-                    onClick={() => onSelectedProposalIdChange(proposal.id)}
+                    onClick={() => {
+                      onSelectedProposalIdChange(proposal.id);
+                      setDetailsProposalId(proposal.id);
+                      setIsDetailsModalOpen(true);
+                    }}
                     className={`
                       text-left px-4 py-3 rounded-lg border-2 transition-all
                       ${
@@ -576,7 +489,29 @@ export function IndividualCalendar({
                       </div>
                       <div>
                         Available: <span className="font-medium">{availableCount}/{totalUsers}</span>
+                        {availableNames.length > 0 && <span> ({availableNames.join(', ')})</span>}
                       </div>
+                      {(proposal.specifics?.date || proposal.specifics?.time) && (
+                        <div>
+                          When:{' '}
+                          <span className="font-medium">
+                            {proposal.specifics?.date || 'Date TBD'}
+                            {proposal.specifics?.time ? ` • ${proposal.specifics.time}` : ''}
+                          </span>
+                        </div>
+                      )}
+                      {proposal.specifics?.location && (
+                        <div>
+                          Where: <span className="font-medium">{proposal.specifics.location}</span>
+                        </div>
+                      )}
+                      {proposal.type === 'event' &&
+                        proposal.specifics?.date &&
+                        !proposerAvailable && (
+                          <div className="text-amber-700 dark:text-amber-300">
+                            Proposer is not marked available yet
+                          </div>
+                        )}
                       <div>
                         Voted: <span className="font-medium">{voterIds.length}</span>
                         {voterNames.length > 0 && (
@@ -589,13 +524,6 @@ export function IndividualCalendar({
                         <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-2 py-0.5 font-medium">
                           Confirmed
                         </span>
-                        {(proposal.specifics?.date || proposal.specifics?.time) && (
-                          <div className="mt-1 text-gray-600 dark:text-slate-300">
-                            {proposal.specifics?.date && <span>{proposal.specifics.date}</span>}
-                            {proposal.specifics?.date && proposal.specifics?.time && <span> • </span>}
-                            {proposal.specifics?.time && <span>{proposal.specifics.time}</span>}
-                          </div>
-                        )}
                       </div>
                     )}
                   </button>
@@ -689,13 +617,6 @@ export function IndividualCalendar({
             {calendarDays.map((date) => {
               const dateStr = formatDate(date);
               const proposalUsersMap = getFilteredProposalUsersMap(dateStr);
-
-              if (isDragging && draggedDates.has(dateStr) && selectedProposalId) {
-                const existingUsers = proposalUsersMap.get(selectedProposalId);
-                const previewUsers = new Set(existingUsers ? Array.from(existingUsers) : []);
-                previewUsers.add(user);
-                proposalUsersMap.set(selectedProposalId, previewUsers);
-              }
 
               return (
                 <CalendarCell

@@ -1,13 +1,13 @@
 # Current Architecture Truth
 
-Date: 2026-02-18
+Date: 2026-02-26
 
 If another document conflicts with this file, treat this file as authoritative.
 
 ## Snapshot
 - App type: single-package React + TypeScript + Vite frontend.
 - Runtime data/auth: Supabase auth in dev + mixed data path (Supabase + local fallback).
-- Primary UX: AI-first assistant surface with workspace tab fallback.
+- Primary UX: Snooky-first proposal surface with workspace tab fallback (workspace may be deprecated).
 - Deployment state: local/dev-first.
 
 ## Current Runtime Mode
@@ -29,6 +29,34 @@ If another document conflicts with this file, treat this file as authoritative.
   - attendee follow-up context (`who is coming?`)
 - OpenRouter coupling is active when `OPENROUTER_API_KEY` is present.
 - Tool-backed answers are deterministic; model is used for unsupported/general phrasing fallback.
+- AI can draft editable proposal forms and create proposals in app.
+
+## Snooky Proposal Runtime (Current)
+- Snooky now renders a proposal feed in `What's Up?` with postcard-style cards.
+- Proposal interaction model (local v1 thread store):
+  - implicit proposer affirmation
+  - explicit one-click participant affirmation (`I'm available as proposed`)
+  - attributed field deltas (`date`, `time`, `place`) via unified "Suggest Alternatives" modal
+- Participant states are shown as avatar tokens (`in`, `waiting`, `alternative suggested`).
+- Proposal contributions are currently stored in localStorage via:
+  - `src/lib/proposalThreadStore.ts`
+
+## Snooky Memory Runtime (Current)
+- Memory v1 is active and local:
+  - self-reported availability extraction
+  - memory status/provenance display
+  - confirm/edit-note/dismiss actions
+  - seeded fictional Stockholm personas + group context
+- Memory persistence currently localStorage via:
+  - `src/lib/memoryStore.ts`
+  - `src/lib/memorySeeds.ts`
+
+## Thumbnail Runtime (Current)
+- Proposal thumbnails can be generated from Snooky cards.
+- Provider path: OpenRouter image model (`google/gemini-3.1-flash-image-preview`).
+- Thumbnail persistence currently localStorage with eviction fallback on quota pressure:
+  - `src/lib/thumbnailGenerator.ts`
+  - `src/lib/proposalThumbnailStore.ts`
 
 ## Migration Direction (Approved)
 - Target backend: Supabase (Auth + Postgres + RLS).
@@ -52,8 +80,9 @@ If another document conflicts with this file, treat this file as authoritative.
 - Decision entities are not yet migrated to Supabase.
 - Group switching UI is not yet exposed in app.
 - Local fallback is still present and must be retired after full migration.
-- AI write actions are not implemented yet (read-only only).
+- Proposal contributions/memory/thumbnails are local-only (not server-persisted).
+- Browser storage quotas can affect thumbnail persistence; local eviction is only a temporary mitigation.
 - AI audit logging/approval workflow tables are not implemented yet.
 
 ## Next Milestone
-- Add approval-gated AI write actions and audit logging while finishing Supabase decision migration.
+- Persist Snooky proposal contributions + memory + thumbnails server-side, then add approval/audit workflow for AI-assisted writes.

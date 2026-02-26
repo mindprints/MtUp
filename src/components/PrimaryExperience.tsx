@@ -34,13 +34,12 @@ export function PrimaryExperience() {
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow p-4 dark:bg-slate-900 dark:border dark:border-slate-800">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
-              Workspace Mode
-            </p>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-slate-100">
-              {activeTab === 'assistant' ? 'AI Assistant First' : 'Calendar Workspace'}
-            </h2>
+          <div
+            className="inline-flex items-center gap-2 rounded-md border border-dashed border-gray-300 px-3 py-2 text-2xl dark:border-slate-700"
+            aria-label="Bicycle icons"
+          >
+            <span aria-hidden="true">🚲</span>
+            <span aria-hidden="true">🚲</span>
           </div>
           <div className="inline-flex rounded-md border border-gray-300 overflow-hidden dark:border-slate-600">
             <button
@@ -53,7 +52,7 @@ export function PrimaryExperience() {
                   : 'bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-200'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              Assistant
+              Snooky
             </button>
             <button
               type="button"
@@ -76,7 +75,7 @@ export function PrimaryExperience() {
             <AiAssistantPanel userId={user.id} activeGroupId={activeGroupId} />
           ) : (
             <p className="text-sm text-gray-600 dark:text-slate-300">
-              AI Assistant is disabled. Set <code>VITE_AI_ASSISTANT_ENABLED=true</code> and restart
+              Snooky is disabled. Set <code>VITE_AI_ASSISTANT_ENABLED=true</code> and restart
               dev server.
             </p>
           )}

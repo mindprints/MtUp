@@ -13,6 +13,7 @@ import { storage } from '@/lib/storage';
 import { isSupabaseMode } from '@/lib/runtimeConfig';
 import { getSupabaseClient } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { generateId } from '@/lib/utils';
 
 type ProposalContextType = {
   groups: GroupSummary[];
@@ -384,12 +385,17 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
         if (!activeGroupId) {
           setActiveGroupIdState(targetGroupId);
         }
+        ensureProposerAvailabilityForEventDate({
+          proposal,
+          groupId: targetGroupId,
+        });
         refresh();
       })();
       return;
     }
 
     storage.addProposal(proposal);
+    ensureProposerAvailabilityForEventDate({ proposal });
     refresh();
   };
 
@@ -414,12 +420,41 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
           console.error('Failed to update proposal:', error);
           return;
         }
+        const existingProposal = proposals.find((entry) => entry.id === proposalId);
+        if (existingProposal) {
+          ensureProposerAvailabilityForEventDate({
+            proposal: {
+              ...existingProposal,
+              ...updates,
+              specifics:
+                updates.specifics !== undefined
+                  ? updates.specifics
+                  : existingProposal.specifics,
+            },
+            groupId: activeGroupId || existingProposal.groupId || null,
+          });
+        }
         refresh();
       })();
       return;
     }
 
     storage.updateProposal(proposalId, updates);
+    {
+      const existingProposal = proposals.find((entry) => entry.id === proposalId);
+      if (existingProposal) {
+        ensureProposerAvailabilityForEventDate({
+          proposal: {
+            ...existingProposal,
+            ...updates,
+            specifics:
+              updates.specifics !== undefined
+                ? updates.specifics
+                : existingProposal.specifics,
+          },
+        });
+      }
+    }
     refresh();
   };
 
@@ -491,6 +526,69 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     storage.setAvailability(availability);
     refresh();
   };
+
+  function ensureProposerAvailabilityForEventDate({
+    proposal,
+    groupId,
+  }: {
+    proposal: Proposal;
+    groupId?: string | null;
+  }) {
+    if (proposal.type !== 'event') return;
+    const dateValue = proposal.specifics?.date;
+    if (!dateValue || dateValue.includes(' to ')) return;
+    const userIdForAvailability = proposal.createdBy;
+    if (!userIdForAvailability) return;
+
+    const current = availabilities.find(
+      (entry) => entry.userId === userIdForAvailability && entry.proposalId === proposal.id
+    );
+    if (current?.dates.includes(dateValue)) return;
+
+    const nextDates = Array.from(new Set([...(current?.dates || []), dateValue])).sort();
+    const availability: Availability = {
+      id: current?.id || generateId(),
+      userId: userIdForAvailability,
+      proposalId: proposal.id,
+      dates: nextDates,
+      timeSlots: current?.timeSlots,
+    };
+
+    if (isSupabaseMode() && user) {
+      const resolvedGroupId = groupId || activeGroupId;
+      if (!resolvedGroupId) return;
+      setAvailabilities((previous) => {
+        const withoutTarget = previous.filter(
+          (entry) =>
+            !(entry.userId === availability.userId && entry.proposalId === availability.proposalId)
+        );
+        return [...withoutTarget, availability];
+      });
+
+      void (async () => {
+        const supabase = getSupabaseClient();
+        const { error } = await supabase.from('availabilities').upsert(
+          {
+            id: availability.id,
+            group_id: resolvedGroupId,
+            user_id: availability.userId,
+            proposal_id: availability.proposalId,
+            dates_json: availability.dates,
+            time_slots_json: availability.timeSlots || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,proposal_id' }
+        );
+        if (error) {
+          console.error('Failed to auto-set proposer availability:', error);
+          refresh();
+        }
+      })();
+      return;
+    }
+
+    storage.setAvailability(availability);
+  }
 
   const getAvailability = (userId: string, proposalId: string) => {
     if (isSupabaseMode()) {

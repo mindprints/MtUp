@@ -36,13 +36,13 @@ export function CalendarCell({
   const isPast = isBefore(startOfDay(date), startOfDay(new Date()));
 
   const handleClick = (e: React.MouseEvent) => {
-    if (!isDragging && !isPast) {
+    if (!isDragging) {
       onCellClick(date, e.ctrlKey || e.metaKey);
     }
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only start drag on left click without ctrl and not in past
+    // Drag interactions are disabled at the parent, but keep handler shape stable.
     if (e.button === 0 && !e.ctrlKey && !e.metaKey && !isPast) {
       onDragStart(date);
     }
@@ -80,13 +80,13 @@ export function CalendarCell({
         ${!isCurrentMonth ? 'bg-gray-50 text-gray-400 dark:bg-slate-900 dark:text-slate-600' : 'bg-white dark:bg-slate-900'}
         ${hasSejour && !isPast ? 'bg-teal-50/70 dark:bg-teal-950/20' : ''}
         ${today ? 'ring-2 ring-blue-500' : ''}
-        ${isPast ? 'bg-gray-100 dark:bg-slate-800 opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800'}
+        ${isPast ? 'bg-gray-100 dark:bg-slate-800 opacity-50' : 'hover:bg-gray-50 dark:hover:bg-slate-800'}
       `}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
       onMouseUp={handleMouseUp}
-      title={isPast ? 'Past date - cannot be scheduled' : ''}
+      title={isPast ? 'Past date' : ''}
     >
       <div className={`text-sm font-medium ${today ? 'text-blue-600' : isPast ? 'text-gray-400 dark:text-slate-500 line-through' : 'dark:text-slate-100'}`}>
         {dayNumber}
@@ -114,7 +114,6 @@ export function CalendarCell({
                   .join(', ')}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (isPast) return;
                   onProposalClick(item.proposal!.id, date, e.ctrlKey || e.metaKey);
                 }}
               >
