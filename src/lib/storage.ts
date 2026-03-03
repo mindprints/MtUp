@@ -14,11 +14,11 @@ const STORAGE_KEY = 'schedule-app-data';
 
 // Mock users
 const MOCK_USERS: User[] = [
-  { id: '1', name: 'Alice', password: 'password', isAdmin: true },
-  { id: '2', name: 'Bob', password: 'password', isAdmin: false },
-  { id: '3', name: 'Charlie', password: 'password', isAdmin: false },
-  { id: '4', name: 'Diana', password: 'password', isAdmin: false },
-  { id: '5', name: 'Eve', password: 'password', isAdmin: false },
+  { id: '1', name: 'Alice', email: 'alice@mtup.local', password: 'password', isAdmin: true },
+  { id: '2', name: 'Bob', email: 'bob@mtup.local', password: 'password', isAdmin: false },
+  { id: '3', name: 'Charlie', email: 'charlie@mtup.local', password: 'password', isAdmin: false },
+  { id: '4', name: 'Diana', email: 'diana@mtup.local', password: 'password', isAdmin: false },
+  { id: '5', name: 'Eve', email: 'eve@mtup.local', password: 'password', isAdmin: false },
 ];
 
 const INITIAL_DATA: AppData = {
@@ -73,8 +73,11 @@ export const storage = {
   // Login
   login(name: string, password: string): User | null {
     const data = this.getData();
+    const normalized = name.trim().toLowerCase();
     const user = data.users.find(
-      (u) => u.name === name && u.password === password
+      (u) =>
+        (u.name.toLowerCase() === normalized || u.email?.toLowerCase() === normalized) &&
+        u.password === password
     );
     if (user) {
       data.currentUserId = user.id;
@@ -97,6 +100,34 @@ export const storage = {
       data.users.push(user);
     }
     data.currentUserId = user.id;
+    this.setData(data);
+  },
+
+  // Add user
+  addUser(user: User): void {
+    const data = this.getData();
+    const exists = data.users.some((entry) => entry.id === user.id);
+    if (exists) return;
+    data.users.push(user);
+    this.setData(data);
+  },
+
+  // Update user
+  updateUser(userId: string, updates: Partial<User>): void {
+    const data = this.getData();
+    const index = data.users.findIndex((entry) => entry.id === userId);
+    if (index === -1) return;
+    data.users[index] = { ...data.users[index], ...updates };
+    this.setData(data);
+  },
+
+  // Delete user
+  deleteUser(userId: string): void {
+    const data = this.getData();
+    data.users = data.users.filter((entry) => entry.id !== userId);
+    data.availabilities = data.availabilities.filter((entry) => entry.userId !== userId);
+    data.decisionVotes = data.decisionVotes.filter((entry) => entry.userId !== userId);
+    if (data.currentUserId === userId) data.currentUserId = null;
     this.setData(data);
   },
 

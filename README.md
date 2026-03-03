@@ -18,7 +18,7 @@ Snooky is the in-app coordination agent and now the primary planning surface.
 - ✅ Snooky local memory v1 (capture, confirm, edit note, dismiss)
 - ✅ Fictional seed personas for 5 Stockholm participants + group seed context
 - ✅ OpenRouter-backed thumbnail generation for proposal cards
-- ✅ Dark mode + device preview toggle (phone/tablet/desktop simulation)
+- ✅ Dark mode + fixed phone-shell preview for Snooky-first iteration
 - 🚧 Persistence migration for proposal contributions/memory/thumbnails to server storage
 - 🚧 Richer suggestion workflows + approval/audit hardening
 
@@ -42,6 +42,9 @@ npm run dev:restart:here
 
 # Build for production
 npm run build
+
+# Convert oversized PNG assets to WebP (requires dev dependency: sharp)
+npm run images:webp -- src
 
 # Run unit tests
 npm run test:run

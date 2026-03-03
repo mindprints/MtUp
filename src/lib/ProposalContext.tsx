@@ -68,12 +68,23 @@ type ProposalContextType = {
     proposalId: string,
     dimension: DecisionDimension
   ) => DecisionOption[];
+  addMember: (payload: {
+    name: string;
+    password: string;
+    isAdmin: boolean;
+  }) => Promise<{ ok: boolean; message?: string }>;
+  setMemberAdmin: (
+    memberId: string,
+    isAdmin: boolean
+  ) => Promise<{ ok: boolean; message?: string }>;
+  removeMember: (memberId: string) => Promise<{ ok: boolean; message?: string }>;
   refresh: () => void;
 };
 
 type GroupSummaryUser = {
   id: string;
   name: string;
+  email?: string;
   isAdmin: boolean;
 };
 
@@ -133,6 +144,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       data.users.map((entry) => ({
         id: entry.id,
         name: entry.name,
+        email: entry.email,
         isAdmin: entry.isAdmin,
       }))
     );
@@ -476,6 +488,85 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     refresh();
   };
 
+  const addMember: ProposalContextType['addMember'] = async (payload) => {
+    if (isSupabaseMode()) {
+      return {
+        ok: false,
+        message: 'Creating new auth users is not enabled here yet.',
+      };
+    }
+
+    const trimmedName = payload.name.trim();
+    if (!trimmedName) {
+      return { ok: false, message: 'Member name is required.' };
+    }
+
+    const existing = storage
+      .getData()
+      .users.find((entry) => entry.name.toLowerCase() === trimmedName.toLowerCase());
+    if (existing) {
+      return { ok: false, message: 'Member name already exists.' };
+    }
+
+    storage.addUser({
+      id: generateId(),
+      name: trimmedName,
+      email: `${trimmedName.toLowerCase().replace(/\s+/g, '.')}@mtup.local`,
+      password: payload.password.trim() || 'password',
+      isAdmin: payload.isAdmin,
+    });
+    refresh();
+    return { ok: true };
+  };
+
+  const setMemberAdmin: ProposalContextType['setMemberAdmin'] = async (memberId, isAdmin) => {
+    if (isSupabaseMode() && user) {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_platform_admin: isAdmin })
+        .eq('id', memberId);
+      if (error) {
+        console.error('Failed to update member admin flag:', error);
+        return { ok: false, message: 'Failed to update admin role.' };
+      }
+      refresh();
+      return { ok: true };
+    }
+
+    storage.updateUser(memberId, { isAdmin });
+    refresh();
+    return { ok: true };
+  };
+
+  const removeMember: ProposalContextType['removeMember'] = async (memberId) => {
+    if (user?.id === memberId) {
+      return { ok: false, message: 'You cannot remove your own account.' };
+    }
+
+    if (isSupabaseMode() && user) {
+      if (!activeGroupId) {
+        return { ok: false, message: 'No active group selected.' };
+      }
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('group_memberships')
+        .delete()
+        .eq('group_id', activeGroupId)
+        .eq('user_id', memberId);
+      if (error) {
+        console.error('Failed to remove group member:', error);
+        return { ok: false, message: 'Failed to remove member from group.' };
+      }
+      refresh();
+      return { ok: true };
+    }
+
+    storage.deleteUser(memberId);
+    refresh();
+    return { ok: true };
+  };
+
   const setAvailabilityWrapper = (availability: Availability) => {
     if (isSupabaseMode() && user && activeGroupId) {
       setAvailabilities((previous) => {
@@ -742,6 +833,9 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
         getDecisionConfirmations,
         getVotesForProposalDimension,
         getOptionsForProposalDimension,
+        addMember,
+        setMemberAdmin,
+        removeMember,
         refresh,
       }}
     >

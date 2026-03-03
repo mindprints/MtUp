@@ -85,6 +85,14 @@ function shouldProposeActivity(message) {
   return hasPlanningVerb && hasActivityNoun;
 }
 
+function looksLikeProposalRefinement(message) {
+  return Boolean(
+    /\b(when|date|time|place|location|where|requirement|requirements|invite|invitees|everyone|all|friday|saturday|sunday|monday|tuesday|wednesday|thursday|tomorrow|tonight|next week)\b/.test(
+      message
+    ) || /\d{4}-\d{2}-\d{2}/.test(message) || /\b\d{1,2}(:\d{2})?\s*(am|pm)\b/i.test(message)
+  );
+}
+
 async function callOpenRouter(messages, options = {}) {
   if (!openRouterApiKey) return null;
   const response = await fetch(`${openRouterBaseUrl}/chat/completions`, {
@@ -110,7 +118,18 @@ async function callOpenRouter(messages, options = {}) {
   return String(payload?.choices?.[0]?.message?.content || '').trim();
 }
 
-async function classifyIntent(message) {
+async function classifyIntent(message, options = {}) {
+  const proposalMode = Boolean(options.proposalMode);
+  const previousIntent = options.previousIntent || null;
+
+  if (proposalMode) {
+    if (shouldProposeActivity(message)) return 'propose_activity';
+    if (previousIntent === 'propose_activity' && looksLikeProposalRefinement(message)) {
+      return 'propose_activity';
+    }
+    if (looksLikeProposalRefinement(message)) return 'propose_activity';
+  }
+
   // Deterministic intent shortcuts for high-confidence phrasing.
   if (shouldListConfirmed(message)) return 'list_confirmed';
   if (shouldListMyAvailability(message)) return 'list_my_availability';
@@ -125,8 +144,9 @@ async function classifyIntent(message) {
     const prompt = [
       {
         role: 'system',
-        content:
-        'Classify the user request into exactly one label: list_confirmed, list_my_availability, list_attendees, propose_activity, unsupported. Respond with only the label.',
+        content: proposalMode
+          ? 'Classify the user request into exactly one label: propose_activity, unsupported. Respond with only the label.'
+          : 'Classify the user request into exactly one label: list_confirmed, list_my_availability, list_attendees, propose_activity, unsupported. Respond with only the label.',
       },
       {
         role: 'user',
@@ -135,11 +155,13 @@ async function classifyIntent(message) {
     ];
     const result = await callOpenRouter(prompt, { maxTokens: 12, temperature: 0 });
     if (
-      result === 'list_confirmed' ||
-      result === 'list_my_availability' ||
-      result === 'list_attendees' ||
-      result === 'propose_activity' ||
-      result === 'unsupported'
+      (proposalMode
+        ? result === 'propose_activity' || result === 'unsupported'
+        : result === 'list_confirmed' ||
+          result === 'list_my_availability' ||
+          result === 'list_attendees' ||
+          result === 'propose_activity' ||
+          result === 'unsupported')
     ) {
       return result;
     }
@@ -151,6 +173,7 @@ async function classifyIntent(message) {
   if (shouldListMyAvailability(message)) return 'list_my_availability';
   if (shouldListAttendees(message)) return 'list_attendees';
   if (shouldProposeActivity(message)) return 'propose_activity';
+  if (proposalMode && looksLikeProposalRefinement(message)) return 'propose_activity';
   return 'unsupported';
 }
 
@@ -539,12 +562,34 @@ function stripTrailingPunctuation(value) {
   return normalizeWhitespace(value).replace(/[.,;:!?]+$/, '').trim();
 }
 
+function isTimeLikePhrase(value) {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  return (
+    /^\d{1,2}$/.test(normalized) ||
+    /^\d{1,2}[:.]\d{2}$/.test(normalized) ||
+    /^\d{1,2}\s*(am|pm)$/.test(normalized) ||
+    /^\d{1,2}[:.]\d{2}\s*(am|pm)$/.test(normalized)
+  );
+}
+
+function sanitizeInferredPlace(value) {
+  const cleaned = stripTrailingPunctuation(value);
+  if (!cleaned) return '';
+  if (isTimeLikePhrase(cleaned)) return '';
+  // A location should usually include alphabetic characters; reject pure numeric fragments.
+  if (!/[a-z]/i.test(cleaned)) return '';
+  return cleaned;
+}
+
 function inferBasicPlaceFromMessage(message) {
   const atMatch = message.match(/\bat\s+([^.,!?\n]+?)(?:\s+(?:on|this|next|tomorrow|at)\b|[.!?]|$)/i);
-  if (atMatch?.[1]) return stripTrailingPunctuation(atMatch[1]);
+  if (atMatch?.[1]) {
+    const sanitizedAt = sanitizeInferredPlace(atMatch[1]);
+    if (sanitizedAt) return sanitizedAt;
+  }
 
   const inMatch = message.match(/\bin\s+([^.,!?\n]+?)(?:\s+(?:on|this|next|tomorrow|at)\b|[.!?]|$)/i);
-  if (inMatch?.[1]) return stripTrailingPunctuation(inMatch[1]);
+  if (inMatch?.[1]) return sanitizeInferredPlace(inMatch[1]);
 
   return '';
 }
@@ -595,7 +640,7 @@ function normalizeModelProposalDraft(raw) {
     dates,
     times,
     invitees,
-    place,
+    place: sanitizeInferredPlace(place),
     requirements,
     comments,
   };
@@ -804,9 +849,11 @@ async function buildActivityProposalPreview(rawMessage) {
       ? `${temporalRequest.window.startIso} to ${temporalRequest.window.endIso}`
       : null;
   const datesFieldValue = primaryDateIso || rangeDateValue || '';
+  const normalizedInvitees = normalizeWhitespace(extractedFields.invitees || '');
   const inviteesFieldValue =
-    extractedFields.invitees ||
-    (inviteEveryone || groupAudienceRequested ? 'Everyone in active group' : 'Everyone in active group');
+    /\b(everyone|all)\b/i.test(normalizedInvitees) || inviteEveryone || groupAudienceRequested
+      ? 'Everyone in active group'
+      : normalizedInvitees || 'Everyone in active group';
   const proposalType = extractedFields.proposalType === 'sejour' ? 'sejour' : 'event';
   const timeFieldValue = extractedFields.times || (proposalType === 'sejour' ? '' : '');
   const placeFieldValue = extractedFields.place || '';
@@ -1008,13 +1055,17 @@ const server = http.createServer(async (req, res) => {
         const userId = context.userId || null;
         const activeGroupId = context.activeGroupId || null;
         const selectedProposalId = context.selectedProposalId || null;
+        const uiMode = context.uiMode || null;
 
         if (!normalizedMessage) {
           sendJson(res, 400, { error: 'message is required' });
           return;
         }
 
-        const intent = await classifyIntent(normalizedMessage);
+        const intent = await classifyIntent(normalizedMessage, {
+          proposalMode: uiMode === 'propose',
+          previousIntent: threadState.lastIntent || null,
+        });
         let rows = [];
         let assistantText = '';
         let responseMode = 'answer';
@@ -1096,6 +1147,8 @@ const server = http.createServer(async (req, res) => {
             rows: [],
           });
         }
+
+        threadState.lastIntent = intent;
 
         threadStateById.set(threadId, threadState);
 

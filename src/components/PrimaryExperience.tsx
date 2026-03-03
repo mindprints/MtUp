@@ -1,20 +1,29 @@
 import { useEffect, useState } from 'react';
 import { AppView } from './AppView';
 import { AiAssistantPanel } from './AiAssistantPanel';
+import { ProposeScreen } from './ProposeScreen';
+import { AdminDashboard } from './AdminDashboard';
 import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
 import { runtimeConfig } from '@/lib/runtimeConfig';
 
-type ExperienceTab = 'assistant' | 'workspace';
+type ExperienceTab = 'activities' | 'propose' | 'admin' | 'workspace';
 const EXPERIENCE_TAB_STORAGE_KEY = 'mtup-primary-tab';
 
 function readInitialTab(aiEnabled: boolean): ExperienceTab {
   const stored = localStorage.getItem(EXPERIENCE_TAB_STORAGE_KEY);
-  if (stored === 'assistant' || stored === 'workspace') {
-    if (stored === 'assistant' && !aiEnabled) return 'workspace';
+  if (stored === 'assistant') {
+    return aiEnabled ? 'activities' : 'workspace';
+  }
+  if (stored === 'workspace') {
+    return aiEnabled ? 'activities' : 'workspace';
+  }
+  if (stored === 'activities' || stored === 'propose' || stored === 'admin') {
+    if (stored === 'activities' && !aiEnabled) return 'workspace';
+    if (stored === 'propose' && !aiEnabled) return 'workspace';
     return stored;
   }
-  return aiEnabled ? 'assistant' : 'workspace';
+  return aiEnabled ? 'activities' : 'workspace';
 }
 
 export function PrimaryExperience() {
@@ -31,48 +40,40 @@ export function PrimaryExperience() {
   }, [activeTab]);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-lg shadow p-4 dark:bg-slate-900 dark:border dark:border-slate-800">
-        <div className="flex items-center justify-between gap-3">
-          <div
-            className="inline-flex items-center gap-2 rounded-md border border-dashed border-gray-300 px-3 py-2 text-2xl dark:border-slate-700"
-            aria-label="Bicycle icons"
-          >
-            <span aria-hidden="true">🚲</span>
-            <span aria-hidden="true">🚲</span>
-          </div>
-          <div className="inline-flex rounded-md border border-gray-300 overflow-hidden dark:border-slate-600">
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      {activeTab !== 'propose' && (
+        <div className="shrink-0 rounded-lg bg-white p-2 dark:bg-slate-900 dark:border dark:border-slate-800">
+          <div className="flex items-center justify-end gap-2">
+            {user.isAdmin && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('admin')}
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+                  activeTab === 'admin'
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
+                }`}
+              >
+                Admin
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setActiveTab('assistant')}
-              disabled={!runtimeConfig.aiAssistantEnabled}
-              className={`px-3 py-1.5 text-sm font-medium ${
-                activeTab === 'assistant'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-200'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              onClick={() => setActiveTab('propose')}
+              className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Snooky
             </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('workspace')}
-              className={`px-3 py-1.5 text-sm font-medium ${
-                activeTab === 'workspace'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-200'
-              }`}
-            >
-              Workspace
-            </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {activeTab === 'assistant' ? (
-        <div className="bg-white rounded-lg shadow p-6 dark:bg-slate-900 dark:border dark:border-slate-800">
+      {activeTab === 'activities' ? (
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white p-2 dark:bg-slate-900 dark:border dark:border-slate-800">
           {runtimeConfig.aiAssistantEnabled ? (
-            <AiAssistantPanel userId={user.id} activeGroupId={activeGroupId} />
+            <div className="h-full overflow-hidden">
+              <AiAssistantPanel userId={user.id} activeGroupId={activeGroupId} />
+            </div>
           ) : (
             <p className="text-sm text-gray-600 dark:text-slate-300">
               Snooky is disabled. Set <code>VITE_AI_ASSISTANT_ENABLED=true</code> and restart
@@ -80,8 +81,18 @@ export function PrimaryExperience() {
             </p>
           )}
         </div>
+      ) : activeTab === 'propose' ? (
+        <ProposeScreen
+          userId={user.id}
+          activeGroupId={activeGroupId}
+          onGoActivities={() => setActiveTab('activities')}
+        />
+      ) : activeTab === 'admin' ? (
+        <AdminDashboard onGoActivities={() => setActiveTab('activities')} />
       ) : (
-        <AppView />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <AppView />
+        </div>
       )}
     </div>
   );

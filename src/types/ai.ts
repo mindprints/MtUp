@@ -43,6 +43,7 @@ export type AiChatRequest = {
     userId?: string;
     activeGroupId?: string | null;
     selectedProposalId?: string | null;
+    uiMode?: 'propose' | 'activities' | 'admin' | 'workspace';
     memoryHints?: Array<{
       id: string;
       factType: string;

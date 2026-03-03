@@ -13,11 +13,15 @@ import { useProposals } from '@/lib/ProposalContext';
 import { generateId } from '@/lib/utils';
 import type { AiActionProposal, AiMessage, Availability, MemoryRecord, Proposal } from '@/types';
 import { AiProposalFormCard, type AiProposalFormValues } from '@/components/AiProposalFormCard';
+import { Modal } from '@/components/Modal';
 
 type AiAssistantPanelProps = {
   userId: string;
   activeGroupId: string | null;
   compact?: boolean;
+  showInlineChatbox?: boolean;
+  proposalFlow?: boolean;
+  onProposalFlowGoActivities?: () => void;
 };
 
 type MemoryStatusFilter = MemoryRecord['status'] | 'all';
@@ -31,6 +35,16 @@ type ProposalCardDrafts = Record<
     isSuggestModalOpen?: boolean;
   }
 >;
+
+const EXPECTED_GROUP_MEMBER_NAMES = ['Alice', 'Bob', 'Charlie', 'Denise', 'Eve'] as const;
+
+type CalendarPopupState = {
+  proposalId: string;
+  proposalTitle: string;
+  anchorMonthIso: string;
+  originalDates: string[];
+  alternativeDates: string[];
+};
 
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -54,6 +68,64 @@ function parseIsoDatesFromText(input: string): string[] {
   }
   const dates = trimmed.match(/\d{4}-\d{2}-\d{2}/g);
   return dates ? Array.from(new Set(dates)) : [];
+}
+
+function formatTo24HourTimeText(input: string): string {
+  if (!input.trim()) return input;
+  return input.replace(/\b(\d{1,2})(?::(\d{2}))?\s*([ap])(?:\.?m\.?)?\b/gi, (_, h, m, meridiem) => {
+    const rawHour = Number(h);
+    if (Number.isNaN(rawHour) || rawHour < 1 || rawHour > 12) return _;
+    const minute = typeof m === 'string' ? m : '00';
+    const normalizedHour =
+      meridiem.toLowerCase() === 'p' ? (rawHour % 12) + 12 : rawHour % 12;
+    return `${String(normalizedHour).padStart(2, '0')}:${minute}`;
+  });
+}
+
+function formatIsoMonthLabel(anchorIso: string): string {
+  const [yearText, monthText] = anchorIso.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!year || !month) return anchorIso;
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return `${monthNames[month - 1]} ${year}`;
+}
+
+function buildMonthCells(anchorIso: string): Array<{ iso: string | null; day: number | null }> {
+  const [yearText, monthText] = anchorIso.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!year || !month) return [];
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstWeekday = new Date(year, month - 1, 1).getDay();
+  const leadingBlanks = (firstWeekday + 6) % 7; // Monday-first grid
+
+  const cells: Array<{ iso: string | null; day: number | null }> = [];
+  for (let i = 0; i < leadingBlanks; i += 1) {
+    cells.push({ iso: null, day: null });
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    cells.push({ iso, day });
+  }
+  while (cells.length % 7 !== 0) {
+    cells.push({ iso: null, day: null });
+  }
+  return cells;
 }
 
 function formatProposalBaseline(proposal: Proposal): string {
@@ -233,6 +305,9 @@ export function AiAssistantPanel({
   userId,
   activeGroupId,
   compact = false,
+  showInlineChatbox = false,
+  proposalFlow = false,
+  onProposalFlowGoActivities,
 }: AiAssistantPanelProps) {
   const { addProposal, proposals, groupUsers, getProposalAvailabilities, getAvailability, setAvailability } =
     useProposals();
@@ -247,6 +322,9 @@ export function AiAssistantPanel({
   const [completedActionMessageIds, setCompletedActionMessageIds] = useState<Record<string, boolean>>(
     {}
   );
+  const [proposalFlowDraftValuesByMessageId, setProposalFlowDraftValuesByMessageId] = useState<
+    Record<string, AiProposalFormValues>
+  >({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recentMemories, setRecentMemories] = useState<MemoryRecord[]>(() =>
@@ -268,6 +346,10 @@ export function AiAssistantPanel({
     Record<string, boolean>
   >({});
   const [thumbnailErrorByProposalId, setThumbnailErrorByProposalId] = useState<Record<string, string>>({});
+  const [selectedAlternativeIdsByProposal, setSelectedAlternativeIdsByProposal] = useState<
+    Record<string, Record<string, boolean>>
+  >({});
+  const [calendarPopup, setCalendarPopup] = useState<CalendarPopupState | null>(null);
 
   useEffect(() => {
     setRecentMemories(memoryStore.listForUser(userId, activeGroupId).slice(0, 4));
@@ -314,24 +396,56 @@ export function AiAssistantPanel({
       const dateValue = formValues.dates.trim();
       const timeValue = formValues.times.trim();
       const placeValue = formValues.place.trim();
+      const requirementsValue = formValues.requirements.trim();
+      const commentsValue = formValues.comments.trim();
+      const createdAt = new Date().toISOString();
+      const createdProposalId = generateId();
+      const createdComments = [
+        ...(requirementsValue
+          ? [
+              {
+                id: generateId(),
+                userId,
+                proposalId: createdProposalId,
+                text: `Requirements: ${requirementsValue}`,
+                createdAt,
+              },
+            ]
+          : []),
+        ...(commentsValue
+          ? [
+              {
+                id: generateId(),
+                userId,
+                proposalId: createdProposalId,
+                text: commentsValue,
+                createdAt,
+              },
+            ]
+          : []),
+      ];
       const createdProposal: Proposal = {
-        id: generateId(),
+        id: createdProposalId,
         title: formValues.title.trim(),
         type: draft.type,
         emoji: draft.emoji || '🎉',
         createdBy: userId,
-        createdAt: new Date().toISOString(),
+        createdAt,
         status: 'proposed',
         specifics: {
           ...(dateValue ? { date: dateValue } : {}),
           ...(timeValue ? { time: timeValue } : {}),
           ...(placeValue ? { location: placeValue } : {}),
         },
+        ...(createdComments.length > 0 ? { comments: createdComments } : {}),
       };
 
       addProposal(createdProposal);
       proposalThreadStore.addImplicitProposerAffirmation(createdProposal);
       setProposalFeedRefreshTick((tick) => tick + 1);
+      if (canGenerateProposalThumbnail()) {
+        void handleGenerateProposalThumbnail(createdProposal);
+      }
 
       const confirmationMessage: AiMessage = {
         id: generateId(),
@@ -524,8 +638,57 @@ export function AiAssistantPanel({
     }
   };
 
-  const sortedProposals = [...proposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const toggleAlternativeSelection = (proposalId: string, optionId: string) => {
+    setSelectedAlternativeIdsByProposal((prev) => ({
+      ...prev,
+      [proposalId]: {
+        ...(prev[proposalId] || {}),
+        [optionId]: !prev[proposalId]?.[optionId],
+      },
+    }));
+  };
+
+  const openCalendarPopup = (
+    proposal: Proposal,
+    originalDates: string[],
+    alternativeDates: string[]
+  ) => {
+    const anchorMonthIso =
+      originalDates[0] ||
+      alternativeDates[0] ||
+      new Date().toISOString().slice(0, 10);
+    setCalendarPopup({
+      proposalId: proposal.id,
+      proposalTitle: proposal.title,
+      anchorMonthIso,
+      originalDates,
+      alternativeDates,
+    });
+  };
+
+  const sortedProposals = [...proposals].sort((a, b) => {
+    const aDates = parseIsoDatesFromText(a.specifics?.date || '');
+    const bDates = parseIsoDatesFromText(b.specifics?.date || '');
+    const aFirstDate = aDates[0] || null;
+    const bFirstDate = bDates[0] || null;
+
+    if (aFirstDate && bFirstDate) {
+      return aFirstDate.localeCompare(bFirstDate) || b.createdAt.localeCompare(a.createdAt);
+    }
+    if (aFirstDate) return -1;
+    if (bFirstDate) return 1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
   const thumbnailDebug = getThumbnailGeneratorDebugState();
+  const cardDeckMode = !compact;
+  const displayGroupUsers =
+    groupUsers.length > 0
+      ? groupUsers
+      : EXPECTED_GROUP_MEMBER_NAMES.map((name, index) => ({
+          id: `expected-member-${index + 1}`,
+          name,
+          isAdmin: name === 'Alice',
+        }));
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -561,6 +724,7 @@ export function AiAssistantPanel({
         context: {
           userId,
           activeGroupId,
+          ...(proposalFlow ? { uiMode: 'propose' as const } : {}),
           memoryHints: relevantMemories.map((record) => ({
             id: record.id,
             factType: record.factType,
@@ -592,29 +756,297 @@ export function AiAssistantPanel({
     }
   };
 
-  return (
-    <div className="space-y-3">
-      {!compact && (
-        <p className="text-sm text-gray-600 dark:text-slate-300">What&apos;s Up?</p>
-      )}
+  const getInitialDraftValues = (proposal: AiActionProposal): AiProposalFormValues => {
+    const draft = proposal.payload?.proposalDraft;
+    return {
+      title: draft?.title || '',
+      dates: draft?.form?.dates || draft?.specifics?.date || '',
+      times: draft?.form?.times || draft?.specifics?.time || '',
+      invitees: draft?.form?.invitees || 'Everyone in active group',
+      place: draft?.form?.place || draft?.specifics?.location || '',
+      requirements: draft?.form?.requirements || '',
+      comments: draft?.form?.comments || '',
+    };
+  };
 
-      <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-        {sortedProposals.length === 0 ? (
-          <p className="text-xs text-gray-600 dark:text-slate-300">
+  const updateProposalFlowDraftField = (
+    messageId: string,
+    proposal: AiActionProposal,
+    key: keyof AiProposalFormValues,
+    value: string
+  ) => {
+    setProposalFlowDraftValuesByMessageId((prev) => ({
+      ...prev,
+      [messageId]: {
+        ...((prev[messageId] || getInitialDraftValues(proposal)) as AiProposalFormValues),
+        [key]: value,
+      },
+    }));
+  };
+
+  const latestProposalFlowActionMessage = [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === 'assistant' &&
+        Boolean(actionProposalsByMessageId[message.id]) &&
+        !hiddenActionMessageIds[message.id]
+    );
+  const latestProposalFlowActionMessageId = latestProposalFlowActionMessage?.id ?? null;
+  const latestProposalFlowActionProposal = latestProposalFlowActionMessageId
+    ? actionProposalsByMessageId[latestProposalFlowActionMessageId]
+    : null;
+  const latestProposalFlowDraftValues =
+    latestProposalFlowActionMessageId && latestProposalFlowActionProposal
+      ? proposalFlowDraftValuesByMessageId[latestProposalFlowActionMessageId] ||
+        getInitialDraftValues(latestProposalFlowActionProposal)
+      : null;
+
+  if (cardDeckMode) {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        {showInlineChatbox && (
+          <form onSubmit={handleSubmit} className="flex gap-2 rounded-lg bg-white p-2 dark:bg-slate-900">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask Snooky..."
+              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <button
+              type="submit"
+              disabled={isLoading || input.trim().length === 0}
+              className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? 'Asking...' : 'Ask'}
+            </button>
+          </form>
+        )}
+        {error && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+            {error}
+          </div>
+        )}
+        {proposalFlow ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-2">
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+              {messages.length > 0 && (
+                <div className="space-y-2">
+                  {messages.map((message) => {
+                    const draftProposal = actionProposalsByMessageId[message.id];
+                    const shouldShowDraftDetails =
+                      message.role === 'assistant' &&
+                      Boolean(draftProposal) &&
+                      !hiddenActionMessageIds[message.id];
+                    const draftValues = draftProposal
+                      ? proposalFlowDraftValuesByMessageId[message.id] || getInitialDraftValues(draftProposal)
+                      : null;
+                    return (
+                      <div key={message.id} className="space-y-1.5">
+                        <div
+                          className={`rounded px-3 py-2 text-sm ${
+                            message.role === 'user'
+                              ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
+                              : 'border border-gray-200 bg-white text-gray-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+                          }`}
+                        >
+                          <div className="text-[10px] uppercase tracking-wide opacity-70">
+                            {message.role === 'assistant' ? 'Snooky' : message.role}
+                          </div>
+                          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                        </div>
+                        {shouldShowDraftDetails && (
+                          <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                              Drafted details
+                            </p>
+                            <p className="mt-1 text-[11px]">
+                              Please edit and Confirm or ask me for more help.
+                            </p>
+                            {draftProposal && draftValues && (
+                              <div className="mt-1 space-y-1.5">
+                                <input
+                                  type="text"
+                                  value={draftValues.title}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      message.id,
+                                      draftProposal,
+                                      'title',
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Title"
+                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <input
+                                    type="date"
+                                    value={
+                                      /^\d{4}-\d{2}-\d{2}$/.test(draftValues.dates.trim())
+                                        ? draftValues.dates.trim()
+                                        : ''
+                                    }
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'dates',
+                                        e.target.value
+                                      )
+                                    }
+                                    aria-label="Date"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                  <input
+                                    type="time"
+                                    value={
+                                      /^\d{2}:\d{2}$/.test(draftValues.times.trim())
+                                        ? draftValues.times.trim()
+                                        : ''
+                                    }
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'times',
+                                        e.target.value
+                                      )
+                                    }
+                                    aria-label="Time"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                </div>
+                                <textarea
+                                  value={draftValues.invitees}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      message.id,
+                                      draftProposal,
+                                      'invitees',
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  placeholder="Invitees"
+                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                                <textarea
+                                  value={draftValues.place}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      message.id,
+                                      draftProposal,
+                                      'place',
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  placeholder="Place"
+                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                                <textarea
+                                  value={draftValues.requirements}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      message.id,
+                                      draftProposal,
+                                      'requirements',
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  placeholder="Requirements"
+                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                                <textarea
+                                  value={draftValues.comments}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      message.id,
+                                      draftProposal,
+                                      'comments',
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  placeholder="Comments"
+                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex items-center gap-2">
+                {latestProposalFlowActionMessageId &&
+                  latestProposalFlowActionProposal &&
+                  latestProposalFlowDraftValues && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleProposeFromDraft(
+                          latestProposalFlowActionMessageId,
+                          latestProposalFlowActionProposal,
+                          latestProposalFlowDraftValues
+                        )
+                      }
+                      disabled={
+                        executingActionMessageId === latestProposalFlowActionMessageId ||
+                        Boolean(completedActionMessageIds[latestProposalFlowActionMessageId]) ||
+                        latestProposalFlowDraftValues.title.trim().length === 0
+                      }
+                      className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {completedActionMessageIds[latestProposalFlowActionMessageId]
+                        ? 'Confirmed'
+                        : executingActionMessageId === latestProposalFlowActionMessageId
+                          ? 'Confirming...'
+                          : 'Confirm'}
+                    </button>
+                  )}
+                {latestProposalFlowActionMessageId && (
+                    <button
+                      type="button"
+                      onClick={() => handleCancelAction(latestProposalFlowActionMessageId)}
+                      className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Cancel
+                    </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onProposalFlowGoActivities}
+                  className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Activities
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : sortedProposals.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center rounded-lg bg-white p-3 text-xs text-gray-600 dark:bg-slate-900 dark:text-slate-300">
             No proposals yet. Use Snooky below to draft one.
-          </p>
+          </div>
         ) : (
-          <div className="space-y-3">
+          <div className="hide-scrollbar min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto">
             {sortedProposals.map((proposal, index) => {
               const theme = proposalCardTheme(index);
               const contributions = proposalThreadStore.listForProposal(proposal.id);
               const proposalAvailabilities = getProposalAvailabilities(proposal.id);
-              const userNames = new Map(groupUsers.map((u) => [u.id, u.name]));
+              const userNames = new Map(displayGroupUsers.map((u) => [u.id, u.name]));
               const fieldChanges = contributions.filter((c) => c.kind === 'field_change');
               const dateChanges = fieldChanges.filter((c) => c.field === 'date');
               const timeChanges = fieldChanges.filter((c) => c.field === 'time');
               const placeChanges = fieldChanges.filter((c) => c.field === 'place');
-              const participantRows = groupUsers.map((member) => {
+              const participantRows = displayGroupUsers.map((member) => {
                 const memberContributions = contributions.filter((c) => c.userId === member.id);
                 const hasAffirmation = memberContributions.some((c) => c.kind === 'affirmation');
                 const hasDateDelta = memberContributions.some(
@@ -630,18 +1062,44 @@ export function AiAssistantPanel({
               });
               const myHasExplicitAffirmation = proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
               const shouldShowAffirmButton = !myHasExplicitAffirmation;
+              const subscribedCount = participantRows.filter((row) => row.hasAffirmation).length;
               const proposalCreatorName = userNames.get(proposal.createdBy) || 'Unknown';
               const thumbnailUrl = proposalThumbnailUrls[proposal.id];
-              const thumbnailBusy = Boolean(thumbnailGeneratingByProposalId[proposal.id]);
-              const thumbnailError = thumbnailErrorByProposalId[proposal.id];
+              const proposerNote =
+                proposal.comments
+                  ?.filter((comment) => comment.userId === proposal.createdBy)
+                  .slice(-1)[0]
+                  ?.text?.trim() || 'No proposer notes yet.';
+              const requirementsNote =
+                proposal.comments
+                  ?.find((comment) => /requirement|require|need/i.test(comment.text))
+                  ?.text?.trim() || 'No requirements listed.';
+              const displayDateChanges = [...dateChanges];
+              const displayTimeChanges = [...timeChanges];
+              const displayPlaceChanges = [...placeChanges];
+              const baselineDateText = proposal.specifics?.date || '';
+              const originalCalendarDates = parseIsoDatesFromText(baselineDateText);
+              const alternativeCalendarDates = Array.from(
+                new Set(
+                  displayDateChanges.flatMap((change) => {
+                    if (typeof change.value.dateText === 'string') {
+                      return parseIsoDatesFromText(String(change.value.dateText));
+                    }
+                    if (typeof change.value.text === 'string') {
+                      return parseIsoDatesFromText(String(change.value.text));
+                    }
+                    return [];
+                  })
+                )
+              );
 
               return (
                 <div
                   key={`${proposal.id}-${proposalFeedRefreshTick}`}
-                  className={`overflow-hidden rounded-[1.25rem] border shadow-sm ${theme.shell}`}
+                  className={`h-full min-h-full snap-start overflow-hidden rounded-[1rem] border-2 shadow ${theme.shell} flex flex-col`}
                 >
                   <div className="relative">
-                    <div className="aspect-[16/10] w-full overflow-hidden bg-white/40 dark:bg-slate-900/40">
+                    <div className="aspect-[16/7] w-full overflow-hidden bg-white/40 dark:bg-slate-900/40">
                       {thumbnailUrl ? (
                         <img
                           src={thumbnailUrl}
@@ -658,7 +1116,7 @@ export function AiAssistantPanel({
                       )}
                     </div>
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 p-3">
+                    <div className="absolute inset-x-0 bottom-0 p-2.5">
                       <div className="flex items-end justify-between gap-3">
                         <div>
                           <p className="text-base font-semibold text-white drop-shadow-sm">
@@ -672,23 +1130,421 @@ export function AiAssistantPanel({
                     </div>
                   </div>
 
-                  <div className="p-3">
-                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  <div className="flex flex-1 flex-col p-2.5">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-medium text-gray-700 dark:text-slate-200">
+                        Subscribed {subscribedCount}/{participantRows.length}
+                      </span>
                       {participantRows.map((row) => (
                         <span
                           key={`avatar-${row.member.id}`}
                           title={`${row.member.name}: ${
-                            row.hasDateDelta ? 'proposed date idea' : row.hasAffirmation ? 'in' : 'waiting'
+                            row.hasAffirmation ? 'subscribed' : 'not subscribed'
                           }`}
-                          className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${
-                            row.hasDateDelta
-                              ? 'border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200'
-                              : row.hasAffirmation
-                                ? 'border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200'
-                                : 'border-gray-300 bg-gray-100 text-gray-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${
+                            row.hasAffirmation
+                              ? 'border-emerald-500 bg-emerald-500 text-white'
+                              : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
                           }`}
                         >
                           {userInitials(row.member.name)}
+                          {row.hasAffirmation && (
+                            <span className="absolute -right-1 -top-1 rounded-full bg-emerald-800 px-1 text-[8px] leading-3 text-white">
+                              IN
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-2 space-y-2.5 rounded-lg border border-white/70 bg-white/70 p-2.5 text-sm leading-6 text-gray-800 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200">
+                      <div className="grid grid-cols-1 gap-1.5">
+                        <div>
+                          <span className="font-semibold">Date:</span>{' '}
+                          {baselineDateText || 'Not set'}
+                        </div>
+                        <div>
+                          <span className="font-semibold">Time:</span>{' '}
+                          {formatTo24HourTimeText(proposal.specifics?.time || 'Not set')}
+                        </div>
+                        <div>
+                          <span className="font-semibold">Place:</span>{' '}
+                          {proposal.specifics?.location || 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-semibold">Proposer notes:</span> {proposerNote}
+                      </div>
+                      <div>
+                        <span className="font-semibold">Requirements:</span> {requirementsNote}
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="font-semibold">Suggested alternatives</p>
+                        {displayDateChanges.length === 0 &&
+                        displayTimeChanges.length === 0 &&
+                        displayPlaceChanges.length === 0 ? (
+                          <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
+                            No alternatives suggested yet.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {displayDateChanges.map((change) => {
+                              const optionId = `date-${change.id}`;
+                              return (
+                              <label key={`date-${change.id}`} className="flex items-start gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
+                                  onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                                  className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                />
+                                <span>
+                                  <span className="font-medium">
+                                    {userInitials(userNames.get(change.userId) || '?')}:
+                                  </span>{' '}
+                                  <span className="font-medium">Date:</span>{' '}
+                                  {typeof change.value.dateText === 'string'
+                                    ? String(change.value.dateText)
+                                    : typeof change.value.text === 'string'
+                                      ? String(change.value.text)
+                                      : 'unspecified'}
+                                </span>
+                              </label>
+                              );
+                            })}
+                            {displayTimeChanges.map((change) => {
+                              const optionId = `time-${change.id}`;
+                              return (
+                              <label key={`time-${change.id}`} className="flex items-start gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
+                                  onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                                  className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                />
+                                <span>
+                                  <span className="font-medium">
+                                    {userInitials(userNames.get(change.userId) || '?')}:
+                                  </span>{' '}
+                                  <span className="font-medium">Time:</span>{' '}
+                                  {typeof change.value.text === 'string'
+                                    ? formatTo24HourTimeText(String(change.value.text))
+                                    : 'unspecified'}
+                                </span>
+                              </label>
+                              );
+                            })}
+                            {displayPlaceChanges.map((change) => {
+                              const optionId = `place-${change.id}`;
+                              return (
+                              <label key={`place-${change.id}`} className="flex items-start gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
+                                  onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                                  className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                />
+                                <span>
+                                  <span className="font-medium">
+                                    {userInitials(userNames.get(change.userId) || '?')}:
+                                  </span>{' '}
+                                  <span className="font-medium">Place:</span>{' '}
+                                  {typeof change.value.text === 'string'
+                                    ? String(change.value.text)
+                                    : 'unspecified'}
+                                </span>
+                              </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
+                      <div className="mt-2 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-slate-200">
+                            Suggest Alternatives
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => closeSuggestAlternativesModal(proposal.id)}
+                            className="rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-700 dark:border-slate-600 dark:text-slate-200"
+                          >
+                            Close
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                          <input
+                            type="text"
+                            value={proposalCardDrafts[proposal.id]?.dateSuggestion || ''}
+                            onChange={(e) =>
+                              setProposalCardDrafts((prev) => ({
+                                ...prev,
+                                [proposal.id]: {
+                                  dateSuggestion: e.target.value,
+                                  timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
+                                  placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
+                                  isSuggestModalOpen: true,
+                                },
+                              }))
+                            }
+                            placeholder="Date(s): 2026-08-10 to 2026-08-14"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                          />
+                          <input
+                            type="text"
+                            value={proposalCardDrafts[proposal.id]?.timeSuggestion || ''}
+                            onChange={(e) =>
+                              setProposalCardDrafts((prev) => ({
+                                ...prev,
+                                [proposal.id]: {
+                                  dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
+                                  timeSuggestion: e.target.value,
+                                  placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
+                                  isSuggestModalOpen: true,
+                                },
+                              }))
+                            }
+                            placeholder="Time: evening / 19:00"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                          />
+                          <input
+                            type="text"
+                            value={proposalCardDrafts[proposal.id]?.placeSuggestion || ''}
+                            onChange={(e) =>
+                              setProposalCardDrafts((prev) => ({
+                                ...prev,
+                                [proposal.id]: {
+                                  dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
+                                  timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
+                                  placeSuggestion: e.target.value,
+                                  isSuggestModalOpen: true,
+                                },
+                              }))
+                            }
+                            placeholder="Place: neighborhood / venue"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                          />
+                        </div>
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleSubmitAlternatives(proposal)}
+                            disabled={
+                              !(
+                                proposalCardDrafts[proposal.id]?.dateSuggestion?.trim() ||
+                                proposalCardDrafts[proposal.id]?.timeSuggestion?.trim() ||
+                                proposalCardDrafts[proposal.id]?.placeSuggestion?.trim()
+                              )
+                            }
+                            className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                          >
+                            Add Alternatives
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-auto pt-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {shouldShowAffirmButton && (
+                          <button
+                            type="button"
+                            onClick={() => handleAffirmAvailabilityAsProposed(proposal)}
+                            className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                          >
+                            I&apos;m available as proposed
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openCalendarPopup(
+                              proposal,
+                              originalCalendarDates,
+                              alternativeCalendarDates
+                            )
+                          }
+                          className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          Calendar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openSuggestAlternativesModal(proposal.id)}
+                          className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          Suggest Alternatives
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <Modal
+          isOpen={Boolean(calendarPopup)}
+          onClose={() => setCalendarPopup(null)}
+          title={calendarPopup ? `${calendarPopup.proposalTitle} calendar` : 'Proposal calendar'}
+        >
+          {calendarPopup && (
+            <div className="space-y-3 text-xs">
+              <p className="text-sm font-semibold text-gray-800 dark:text-slate-100">
+                {formatIsoMonthLabel(calendarPopup.anchorMonthIso)}
+              </p>
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-gray-500 dark:text-slate-400">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => (
+                  <div key={`weekday-${label}`}>{label}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {buildMonthCells(calendarPopup.anchorMonthIso).map((cell, index) => {
+                  if (!cell.iso || !cell.day) {
+                    return <div key={`blank-${index}`} className="h-8 rounded-md bg-transparent" />;
+                  }
+                  const isOriginal = calendarPopup.originalDates.includes(cell.iso);
+                  const isAlternative = calendarPopup.alternativeDates.includes(cell.iso);
+                  const dayClass = isOriginal && isAlternative
+                    ? 'border-sky-300 bg-gradient-to-r from-sky-100 to-amber-100 text-slate-900 dark:border-sky-700 dark:from-sky-900/30 dark:to-amber-900/30 dark:text-slate-100'
+                    : isOriginal
+                      ? 'border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-100'
+                      : isAlternative
+                        ? 'border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100'
+                        : 'border-gray-200 bg-white text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300';
+                  return (
+                    <div
+                      key={cell.iso}
+                      className={`flex h-8 items-center justify-center rounded-md border text-[11px] font-medium ${dayClass}`}
+                    >
+                      {cell.day}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full bg-sky-400 dark:bg-sky-300" />
+                  Original dates
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400 dark:bg-amber-300" />
+                  Alternative dates
+                </span>
+              </div>
+            </div>
+          )}
+        </Modal>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {!compact && (
+        <p className="text-xs text-gray-600 dark:text-slate-300">What&apos;s Up?</p>
+      )}
+
+      <div className="rounded-lg bg-white p-1 dark:bg-slate-900">
+        {sortedProposals.length === 0 ? (
+          <p className="text-xs text-gray-600 dark:text-slate-300">
+            No proposals yet. Use Snooky below to draft one.
+          </p>
+        ) : (
+          <div className="snap-y snap-mandatory space-y-2 pr-0.5">
+            {sortedProposals.map((proposal, index) => {
+              const theme = proposalCardTheme(index);
+              const contributions = proposalThreadStore.listForProposal(proposal.id);
+              const proposalAvailabilities = getProposalAvailabilities(proposal.id);
+              const userNames = new Map(displayGroupUsers.map((u) => [u.id, u.name]));
+              const fieldChanges = contributions.filter((c) => c.kind === 'field_change');
+              const dateChanges = fieldChanges.filter((c) => c.field === 'date');
+              const timeChanges = fieldChanges.filter((c) => c.field === 'time');
+              const placeChanges = fieldChanges.filter((c) => c.field === 'place');
+              const participantRows = displayGroupUsers.map((member) => {
+                const memberContributions = contributions.filter((c) => c.userId === member.id);
+                const hasAffirmation = memberContributions.some((c) => c.kind === 'affirmation');
+                const hasDateDelta = memberContributions.some(
+                  (c) => c.kind === 'field_change' && c.field === 'date'
+                );
+                const availability = proposalAvailabilities.find((a) => a.userId === member.id);
+                return {
+                  member,
+                  hasAffirmation,
+                  hasDateDelta,
+                  availabilityDateCount: availability?.dates.length || 0,
+                };
+              });
+              const myHasExplicitAffirmation = proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
+              const shouldShowAffirmButton = !myHasExplicitAffirmation;
+              const subscribedCount = participantRows.filter((row) => row.hasAffirmation).length;
+              const proposalCreatorName = userNames.get(proposal.createdBy) || 'Unknown';
+              const thumbnailUrl = proposalThumbnailUrls[proposal.id];
+              const thumbnailBusy = Boolean(thumbnailGeneratingByProposalId[proposal.id]);
+              const thumbnailError = thumbnailErrorByProposalId[proposal.id];
+
+              return (
+                <div
+                  key={`${proposal.id}-${proposalFeedRefreshTick}`}
+                  className={`snap-start overflow-hidden rounded-[1rem] border shadow-sm ${theme.shell} flex min-h-[70vh] flex-col`}
+                >
+                  <div className="relative">
+                    <div className="aspect-[16/7] w-full overflow-hidden bg-white/40 dark:bg-slate-900/40">
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt={`${proposal.title} thumbnail`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className={`flex h-full w-full items-center justify-center text-6xl ${theme.tile}`}
+                          title="Thumbnail placeholder (can be replaced with image)"
+                        >
+                          <span aria-hidden="true">{proposal.emoji}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 p-2.5">
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold text-white drop-shadow-sm">
+                            {proposal.title}
+                          </p>
+                          <p className="mt-0.5 text-xs text-white/85">
+                            by {proposalCreatorName}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col p-2.5">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-medium text-gray-700 dark:text-slate-200">
+                        Subscribed {subscribedCount}/{participantRows.length}
+                      </span>
+                      {participantRows.map((row) => (
+                        <span
+                          key={`avatar-${row.member.id}`}
+                          title={`${row.member.name}: ${
+                            row.hasAffirmation ? 'subscribed' : 'not subscribed'
+                          }`}
+                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${
+                            row.hasAffirmation
+                              ? 'border-emerald-500 bg-emerald-500 text-white'
+                              : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                          }`}
+                        >
+                          {userInitials(row.member.name)}
+                          {row.hasAffirmation && (
+                            <span className="absolute -right-1 -top-1 rounded-full bg-emerald-800 px-1 text-[8px] leading-3 text-white">
+                              IN
+                            </span>
+                          )}
                         </span>
                       ))}
                     </div>
@@ -714,7 +1570,7 @@ export function AiAssistantPanel({
                       )}
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {shouldShowAffirmButton ? (
                       <button
                         type="button"
@@ -761,7 +1617,7 @@ export function AiAssistantPanel({
                       </p>
                     )}
 
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       <details className="group rounded-full">
                         <summary className={`cursor-pointer list-none rounded-full border px-2.5 py-1 text-[11px] ${theme.accent}`}>
                           Plan
@@ -827,7 +1683,7 @@ export function AiAssistantPanel({
                     </div>
 
                     {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
-                      <div className="mt-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+                      <div className="mt-2 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-950">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-slate-200">
                             Suggest Alternatives
@@ -919,7 +1775,7 @@ export function AiAssistantPanel({
         )}
       </div>
 
-      <div className="min-h-[18rem] max-h-[65vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 p-3 space-y-2 bg-gray-50 dark:bg-slate-950">
+      <div className="min-h-[18rem] rounded-lg border border-gray-200 dark:border-slate-700 p-3 space-y-2 bg-gray-50 dark:bg-slate-950">
         {messages.map((message) => (
           <div key={message.id} className="space-y-2">
             <div
@@ -932,7 +1788,7 @@ export function AiAssistantPanel({
               <div className="text-[10px] uppercase tracking-wide opacity-70">
                 {message.role === 'assistant' ? 'Snooky' : message.role}
               </div>
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              <div className="whitespace-pre-wrap break-words">{message.content}</div>
             </div>
             {message.role === 'assistant' && memoryCitationsByMessageId[message.id]?.length > 0 && (
               <div className="rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">

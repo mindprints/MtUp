@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedUser: User = {
       id: sessionUser.id,
       name: profileData?.display_name || fallbackName,
+      email: sessionUser.email,
       password: '',
       isAdmin: Boolean(profileData?.is_platform_admin),
     };
