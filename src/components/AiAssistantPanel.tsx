@@ -137,6 +137,30 @@ function formatProposalBaseline(proposal: Proposal): string {
   return parts.length > 0 ? parts.join(' | ') : 'No logistics set yet';
 }
 
+function parseFirstTime24h(input: string): { hour: number; minute: number } | null {
+  const normalized = formatTo24HourTimeText(input || '');
+  const match = normalized.match(/\b([01]\d|2[0-3]):([0-5]\d)\b/);
+  if (!match) return null;
+  return { hour: Number(match[1]), minute: Number(match[2]) };
+}
+
+function formatIcsDatePart(date: Date): string {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
+function formatIcsDateTimePart(date: Date): string {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${formatIcsDatePart(date)}T${hh}${mm}00`;
+}
+
+function escapeIcsText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+}
+
 function proposalCardTheme(index: number) {
   const themes = [
     {
@@ -638,6 +662,71 @@ export function AiAssistantPanel({
     }
   };
 
+  const handleAddToCalendar = (proposal: Proposal) => {
+    const parsedDates = parseIsoDatesFromText(proposal.specifics?.date || '');
+    if (parsedDates.length === 0) {
+      setError('Cannot add to calendar: proposal has no valid date.');
+      return;
+    }
+
+    const startDate = new Date(`${parsedDates[0]}T00:00:00`);
+    const lastDate = parsedDates[parsedDates.length - 1];
+    const endDateBase = new Date(`${lastDate}T00:00:00`);
+    const parsedTime = parseFirstTime24h(proposal.specifics?.time || '');
+
+    let dtStart = '';
+    let dtEnd = '';
+    let allDay = false;
+
+    if (parsedTime) {
+      startDate.setHours(parsedTime.hour, parsedTime.minute, 0, 0);
+      const endDateTime = new Date(startDate.getTime() + 60 * 60 * 1000);
+      dtStart = formatIcsDateTimePart(startDate);
+      dtEnd = formatIcsDateTimePart(endDateTime);
+    } else {
+      allDay = true;
+      const exclusiveEnd = new Date(endDateBase);
+      exclusiveEnd.setDate(exclusiveEnd.getDate() + 1);
+      dtStart = formatIcsDatePart(startDate);
+      dtEnd = formatIcsDatePart(exclusiveEnd);
+    }
+
+    const locationText = proposal.specifics?.location?.trim() || '';
+    const descriptionParts = [
+      proposal.comments?.length ? proposal.comments.map((c) => c.text).join('\n') : '',
+      proposal.specifics?.time ? `Time: ${proposal.specifics.time}` : '',
+      proposal.specifics?.date ? `Date: ${proposal.specifics.date}` : '',
+    ].filter(Boolean);
+
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//mtUp//Snooky//EN',
+      'BEGIN:VEVENT',
+      `UID:${proposal.id}@mtup.local`,
+      `DTSTAMP:${formatIcsDateTimePart(new Date())}`,
+      allDay ? `DTSTART;VALUE=DATE:${dtStart}` : `DTSTART:${dtStart}`,
+      allDay ? `DTEND;VALUE=DATE:${dtEnd}` : `DTEND:${dtEnd}`,
+      `SUMMARY:${escapeIcsText(proposal.title)}`,
+      ...(locationText ? [`LOCATION:${escapeIcsText(locationText)}`] : []),
+      ...(descriptionParts.length > 0
+        ? [`DESCRIPTION:${escapeIcsText(descriptionParts.join('\n'))}`]
+        : []),
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ];
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${proposal.title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'event'}.ics`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
   const toggleAlternativeSelection = (proposalId: string, optionId: string) => {
     setSelectedAlternativeIdsByProposal((prev) => ({
       ...prev,
@@ -897,7 +986,7 @@ export function AiAssistantPanel({
                                       )
                                     }
                                     aria-label="Date"
-                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
                                   />
                                   <input
                                     type="time"
@@ -915,7 +1004,7 @@ export function AiAssistantPanel({
                                       )
                                     }
                                     aria-label="Time"
-                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
                                   />
                                 </div>
                                 <textarea
@@ -1369,6 +1458,13 @@ export function AiAssistantPanel({
                           className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                           Calendar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddToCalendar(proposal)}
+                          className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          To My Calendar
                         </button>
                         <button
                           type="button"

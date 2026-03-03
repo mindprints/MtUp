@@ -25,6 +25,14 @@ function getOpenRouterApiKey(): string {
   ).trim();
 }
 
+function getPrimaryThumbnailApiKey(): string {
+  return String((import.meta as any).env?.VITE_THUMBNAIL_OPENROUTER_API_KEY || '').trim();
+}
+
+function getFallbackOpenRouterApiKey(): string {
+  return String((import.meta as any).env?.VITE_OPENROUTER_API_KEY || '').trim();
+}
+
 function getOpenRouterBaseUrl(): string {
   return (
     String((import.meta as any).env?.VITE_THUMBNAIL_OPENROUTER_BASE_URL || '').trim() ||
@@ -76,39 +84,63 @@ export async function generateProposalThumbnail(proposal: Proposal): Promise<str
   if (provider !== 'openrouter') {
     throw new Error(`Unsupported thumbnail provider: ${provider}`);
   }
-  const apiKey = getOpenRouterApiKey();
+  const primaryKey = getPrimaryThumbnailApiKey();
+  const fallbackKey = getFallbackOpenRouterApiKey();
+  const apiKey = primaryKey || fallbackKey;
   if (!apiKey) {
     throw new Error('Missing VITE_THUMBNAIL_OPENROUTER_API_KEY');
   }
+  const requestWithKey = async (key: string): Promise<{ ok: boolean; status: number; bodyText: string; payload: OpenRouterImageResponse | null }> => {
+    const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: getOpenRouterModel(),
+        modalities: ['image', 'text'],
+        messages: [
+          {
+            role: 'user',
+            content: buildPrompt(proposal),
+          },
+        ],
+      }),
+    });
 
-  const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: getOpenRouterModel(),
-      modalities: ['image', 'text'],
-      messages: [
-        {
-          role: 'user',
-          content: buildPrompt(proposal),
-        },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenRouter thumbnail request failed (${response.status}): ${body || 'no body'}`);
+    if (!response.ok) {
+      const bodyText = await response.text();
+      return { ok: false, status: response.status, bodyText, payload: null };
+    }
+
+    const payload = (await response.json()) as OpenRouterImageResponse;
+    return { ok: true, status: response.status, bodyText: '', payload };
+  };
+
+  const firstAttempt = await requestWithKey(apiKey);
+  const shouldRetryWithFallback =
+    !firstAttempt.ok &&
+    firstAttempt.status === 401 &&
+    Boolean(primaryKey) &&
+    Boolean(fallbackKey) &&
+    primaryKey !== fallbackKey;
+
+  const finalResult = shouldRetryWithFallback
+    ? await requestWithKey(fallbackKey)
+    : firstAttempt;
+
+  if (!finalResult.ok || !finalResult.payload) {
+    throw new Error(
+      `OpenRouter thumbnail request failed (${finalResult.status}): ${finalResult.bodyText || 'no body'}`
+    );
   }
 
-  const payload = (await response.json()) as OpenRouterImageResponse;
-  if (payload.error?.message) {
-    throw new Error(payload.error.message);
+  if (finalResult.payload.error?.message) {
+    throw new Error(finalResult.payload.error.message);
   }
 
-  const images = payload.choices?.[0]?.message?.images || [];
+  const images = finalResult.payload.choices?.[0]?.message?.images || [];
   for (const image of images) {
     const url = image.image_url?.url;
     if (typeof url === 'string' && url.startsWith('data:image/')) {
