@@ -30,6 +30,8 @@ type ProposalCardDrafts = Record<
   string,
   {
     dateSuggestion: string;
+    startDateSuggestion: string;
+    endDateSuggestion: string;
     timeSuggestion: string;
     placeSuggestion: string;
     isSuggestModalOpen?: boolean;
@@ -44,6 +46,33 @@ type CalendarPopupState = {
   anchorMonthIso: string;
   originalDates: string[];
   alternativeDates: string[];
+};
+
+type ParsedDateRange = {
+  startDate: string;
+  endDate: string;
+};
+
+type ProposalFlowEditDraft = {
+  title: string;
+  startDate: string;
+  endDate: string;
+  time: string;
+  place: string;
+};
+
+type ProposalFlowAlternativeDraft = {
+  startDate: string;
+  endDate: string;
+  time: string;
+  place: string;
+};
+
+type PendingAlternativeSuggestion = {
+  id: string;
+  dateText: string;
+  timeText: string;
+  placeText: string;
 };
 
 function readStringArray(value: unknown): string[] {
@@ -68,6 +97,68 @@ function parseIsoDatesFromText(input: string): string[] {
   }
   const dates = trimmed.match(/\d{4}-\d{2}-\d{2}/g);
   return dates ? Array.from(new Set(dates)) : [];
+}
+
+function parseDateRangeFromText(input: string): ParsedDateRange {
+  const dates = parseIsoDatesFromText(input);
+  if (dates.length === 0) {
+    return { startDate: '', endDate: '' };
+  }
+  return {
+    startDate: dates[0] || '',
+    endDate: dates[dates.length - 1] || '',
+  };
+}
+
+function formatDateRangeText(startDate: string, endDate: string): string {
+  if (!startDate && !endDate) return '';
+  const normalizedStart = startDate || endDate;
+  const normalizedEnd = endDate || startDate;
+  if (!normalizedStart) return '';
+  return normalizedStart === normalizedEnd
+    ? normalizedStart
+    : `${normalizedStart} to ${normalizedEnd}`;
+}
+
+function shiftIsoDateByDays(isoDate: string, deltaDays: number): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function getMonthIsoFromDateIso(dateIso: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  return dateIso.slice(0, 7);
+}
+
+function getMonthBoundaries(monthIso: string): { firstDayIso: string; lastDayIso: string } | null {
+  const [yearText, monthText] = monthIso.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!year || !month) return null;
+  const firstDayIso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const lastDayIso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { firstDayIso, lastDayIso };
+}
+
+function collectCalendarMonthIsos(
+  originalDates: string[],
+  alternativeDates: string[],
+  anchorMonthIso: string
+): string[] {
+  const monthSet = new Set<string>();
+  [...originalDates, ...alternativeDates].forEach((dateIso) => {
+    const monthIso = getMonthIsoFromDateIso(dateIso);
+    if (monthIso) monthSet.add(monthIso);
+  });
+  if (monthSet.size === 0) {
+    const anchorMonth = anchorMonthIso.slice(0, 7);
+    monthSet.add(anchorMonth);
+  }
+  return Array.from(monthSet).sort();
 }
 
 function formatTo24HourTimeText(input: string): string {
@@ -224,6 +315,17 @@ function userInitials(name: string): string {
     .join('');
 }
 
+function buildProposalFlowEditDraft(proposal: Proposal): ProposalFlowEditDraft {
+  const parsedRange = parseDateRangeFromText(proposal.specifics?.date || '');
+  return {
+    title: proposal.title || '',
+    startDate: parsedRange.startDate,
+    endDate: parsedRange.endDate,
+    time: proposal.specifics?.time || '',
+    place: proposal.specifics?.location || '',
+  };
+}
+
 function summarizeMemoryRecord(record: MemoryRecord): string {
   const availabilityLabel =
     record.value.availability === 'available'
@@ -333,8 +435,15 @@ export function AiAssistantPanel({
   proposalFlow = false,
   onProposalFlowGoActivities,
 }: AiAssistantPanelProps) {
-  const { addProposal, proposals, groupUsers, getProposalAvailabilities, getAvailability, setAvailability } =
-    useProposals();
+  const {
+    addProposal,
+    updateProposal,
+    proposals,
+    groupUsers,
+    getProposalAvailabilities,
+    getAvailability,
+    setAvailability,
+  } = useProposals();
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<AiMessage[]>([]);
@@ -374,6 +483,21 @@ export function AiAssistantPanel({
     Record<string, Record<string, boolean>>
   >({});
   const [calendarPopup, setCalendarPopup] = useState<CalendarPopupState | null>(null);
+  const [proposalFlowEditDrafts, setProposalFlowEditDrafts] = useState<
+    Record<string, ProposalFlowEditDraft>
+  >({});
+  const [proposalFlowSavingById, setProposalFlowSavingById] = useState<Record<string, boolean>>({});
+  const [proposalFlowAlternativeDraftsByMessageId, setProposalFlowAlternativeDraftsByMessageId] =
+    useState<Record<string, ProposalFlowAlternativeDraft>>({});
+  const [pendingAlternativeSuggestionsByMessageId, setPendingAlternativeSuggestionsByMessageId] =
+    useState<Record<string, PendingAlternativeSuggestion[]>>({});
+  const [proposalFlowEditorUserId, setProposalFlowEditorUserId] = useState<string>(userId);
+  const [proposalFlowEditorProposalId, setProposalFlowEditorProposalId] = useState<string | null>(null);
+  const [isProposalFlowEditorOpen, setIsProposalFlowEditorOpen] = useState(false);
+  const [commentDraftByProposalId, setCommentDraftByProposalId] = useState<Record<string, string>>({});
+  const [editorAlternativeDraftByProposalId, setEditorAlternativeDraftByProposalId] = useState<
+    Record<string, ProposalFlowAlternativeDraft>
+  >({});
 
   useEffect(() => {
     setRecentMemories(memoryStore.listForUser(userId, activeGroupId).slice(0, 4));
@@ -400,6 +524,64 @@ export function AiAssistantPanel({
       setThumbnailErrorByProposalId({});
     }
   }, [proposals]);
+
+  useEffect(() => {
+    if (!proposalFlow) return;
+    const myProposals = proposals.filter((proposal) => proposal.createdBy === userId);
+    setProposalFlowEditDrafts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      myProposals.forEach((proposal) => {
+        if (!next[proposal.id]) {
+          next[proposal.id] = buildProposalFlowEditDraft(proposal);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [proposalFlow, proposals, userId]);
+
+  useEffect(() => {
+    if (!proposalFlow) return;
+    const isAdmin = groupUsers.some((member) => member.id === userId && member.isAdmin);
+    const availableUserIds = new Set<string>(
+      isAdmin ? [userId, ...groupUsers.map((member) => member.id)] : [userId]
+    );
+    const hasSelectedUser = availableUserIds.has(proposalFlowEditorUserId);
+    const nextUserId = hasSelectedUser ? proposalFlowEditorUserId : userId;
+    if (nextUserId !== proposalFlowEditorUserId) {
+      setProposalFlowEditorUserId(nextUserId);
+      return;
+    }
+
+    const proposalsForSelectedUser = proposals
+      .filter((proposal) => proposal.createdBy === nextUserId)
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (proposalsForSelectedUser.length === 0) {
+      if (proposalFlowEditorProposalId !== null) {
+        setProposalFlowEditorProposalId(null);
+      }
+      return;
+    }
+    if (!proposalFlowEditorProposalId) {
+      setProposalFlowEditorProposalId(proposalsForSelectedUser[0].id);
+      return;
+    }
+    const exists = proposalsForSelectedUser.some(
+      (proposal) => proposal.id === proposalFlowEditorProposalId
+    );
+    if (!exists) {
+      setProposalFlowEditorProposalId(proposalsForSelectedUser[0].id);
+    }
+  }, [
+    proposalFlow,
+    proposals,
+    proposalFlowEditorUserId,
+    proposalFlowEditorProposalId,
+    groupUsers,
+    userId,
+  ]);
 
   const handleProposeFromDraft = async (
     messageId: string,
@@ -466,24 +648,55 @@ export function AiAssistantPanel({
 
       addProposal(createdProposal);
       proposalThreadStore.addImplicitProposerAffirmation(createdProposal);
+      const pendingAlternatives = pendingAlternativeSuggestionsByMessageId[messageId] || [];
+      let nextAvailability = getAvailability(userId, createdProposal.id);
+      pendingAlternatives.forEach((suggestion) => {
+        if (suggestion.dateText) {
+          const { impliedDates } = proposalThreadStore.addDateFieldChange(
+            createdProposal.id,
+            userId,
+            suggestion.dateText
+          );
+          if (impliedDates.length > 0) {
+            const mergedDates = Array.from(
+              new Set([...(nextAvailability?.dates || []), ...impliedDates])
+            ).sort();
+            nextAvailability = {
+              id: nextAvailability?.id || generateId(),
+              userId,
+              proposalId: createdProposal.id,
+              dates: mergedDates,
+              timeSlots: nextAvailability?.timeSlots,
+            };
+          }
+        }
+        if (suggestion.timeText) {
+          proposalThreadStore.addFieldChange(createdProposal.id, userId, 'time', suggestion.timeText);
+        }
+        if (suggestion.placeText) {
+          proposalThreadStore.addFieldChange(createdProposal.id, userId, 'place', suggestion.placeText);
+        }
+      });
+      if (nextAvailability) {
+        setAvailability(nextAvailability);
+      }
       setProposalFeedRefreshTick((tick) => tick + 1);
       if (canGenerateProposalThumbnail()) {
         void handleGenerateProposalThumbnail(createdProposal);
       }
-
-      const confirmationMessage: AiMessage = {
-        id: generateId(),
-        role: 'assistant',
-        content:
-          `Created proposal "${createdProposal.title}"` +
-          `${createdProposal.specifics?.date ? ` for ${createdProposal.specifics.date}` : ''}. ` +
-          `Invitees: ${formValues.invitees || 'Everyone in active group'}.` +
-          `${formValues.requirements ? ` Requirements: ${formValues.requirements}.` : ''}` +
-          `${formValues.comments ? ` Comments: ${formValues.comments}.` : ''}`,
-        createdAt: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [...prev, confirmationMessage]);
+      setPendingAlternativeSuggestionsByMessageId((prev) => ({
+        ...prev,
+        [messageId]: [],
+      }));
+      setProposalFlowAlternativeDraftsByMessageId((prev) => ({
+        ...prev,
+        [messageId]: {
+          startDate: '',
+          endDate: '',
+          time: '',
+          place: '',
+        },
+      }));
       setCompletedActionMessageIds((prev) => ({ ...prev, [messageId]: true }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to execute AI action');
@@ -580,12 +793,16 @@ export function AiAssistantPanel({
   };
 
   const openSuggestAlternativesModal = (proposalId: string) => {
+    const previous = proposalCardDrafts[proposalId];
+    const parsed = parseDateRangeFromText(previous?.dateSuggestion || '');
     setProposalCardDrafts((prev) => ({
       ...prev,
       [proposalId]: {
-        dateSuggestion: prev[proposalId]?.dateSuggestion || '',
-        timeSuggestion: prev[proposalId]?.timeSuggestion || '',
-        placeSuggestion: prev[proposalId]?.placeSuggestion || '',
+        dateSuggestion: previous?.dateSuggestion || '',
+        startDateSuggestion: previous?.startDateSuggestion || parsed.startDate,
+        endDateSuggestion: previous?.endDateSuggestion || parsed.endDate,
+        timeSuggestion: previous?.timeSuggestion || '',
+        placeSuggestion: previous?.placeSuggestion || '',
         isSuggestModalOpen: true,
       },
     }));
@@ -596,6 +813,12 @@ export function AiAssistantPanel({
       ...prev,
       [proposalId]: {
         dateSuggestion: prev[proposalId]?.dateSuggestion || '',
+        startDateSuggestion:
+          prev[proposalId]?.startDateSuggestion ||
+          parseDateRangeFromText(prev[proposalId]?.dateSuggestion || '').startDate,
+        endDateSuggestion:
+          prev[proposalId]?.endDateSuggestion ||
+          parseDateRangeFromText(prev[proposalId]?.dateSuggestion || '').endDate,
         timeSuggestion: prev[proposalId]?.timeSuggestion || '',
         placeSuggestion: prev[proposalId]?.placeSuggestion || '',
         isSuggestModalOpen: false,
@@ -606,7 +829,10 @@ export function AiAssistantPanel({
   const handleSubmitAlternatives = (proposal: Proposal) => {
     const draft = proposalCardDrafts[proposal.id];
     if (!draft) return;
-    const dateText = draft.dateSuggestion.trim();
+    const dateText = formatDateRangeText(
+      draft.startDateSuggestion.trim(),
+      draft.endDateSuggestion.trim()
+    );
     const timeText = draft.timeSuggestion.trim();
     const placeText = draft.placeSuggestion.trim();
     if (!dateText && !timeText && !placeText) return;
@@ -636,6 +862,8 @@ export function AiAssistantPanel({
       ...prev,
       [proposal.id]: {
         dateSuggestion: '',
+        startDateSuggestion: '',
+        endDateSuggestion: '',
         timeSuggestion: '',
         placeSuggestion: '',
         isSuggestModalOpen: false,
@@ -660,6 +888,190 @@ export function AiAssistantPanel({
     } finally {
       setThumbnailGeneratingByProposalId((prev) => ({ ...prev, [proposal.id]: false }));
     }
+  };
+
+  const updateProposalFlowAlternativeDraft = (
+    messageId: string,
+    key: keyof ProposalFlowAlternativeDraft,
+    value: string
+  ) => {
+    setProposalFlowAlternativeDraftsByMessageId((prev) => ({
+      ...prev,
+      [messageId]: {
+        ...(prev[messageId] || {
+          startDate: '',
+          endDate: '',
+          time: '',
+          place: '',
+        }),
+        [key]: value,
+      },
+    }));
+  };
+
+  const addPendingAlternativeSuggestion = (messageId: string) => {
+    const draft = proposalFlowAlternativeDraftsByMessageId[messageId] || {
+      startDate: '',
+      endDate: '',
+      time: '',
+      place: '',
+    };
+    const dateText = formatDateRangeText(draft.startDate.trim(), draft.endDate.trim());
+    const timeText = draft.time.trim();
+    const placeText = draft.place.trim();
+    if (!dateText && !timeText && !placeText) return;
+
+    const nextSuggestion: PendingAlternativeSuggestion = {
+      id: generateId(),
+      dateText,
+      timeText,
+      placeText,
+    };
+
+    setPendingAlternativeSuggestionsByMessageId((prev) => ({
+      ...prev,
+      [messageId]: [...(prev[messageId] || []), nextSuggestion],
+    }));
+    setProposalFlowAlternativeDraftsByMessageId((prev) => ({
+      ...prev,
+      [messageId]: {
+        startDate: '',
+        endDate: '',
+        time: '',
+        place: '',
+      },
+    }));
+  };
+
+  const removePendingAlternativeSuggestion = (messageId: string, suggestionId: string) => {
+    setPendingAlternativeSuggestionsByMessageId((prev) => ({
+      ...prev,
+      [messageId]: (prev[messageId] || []).filter((entry) => entry.id !== suggestionId),
+    }));
+  };
+
+  const handleAddProposalComment = (proposal: Proposal) => {
+    const text = (commentDraftByProposalId[proposal.id] || '').trim();
+    if (!text) return;
+    const nextComments = [
+      ...(proposal.comments || []),
+      {
+        id: generateId(),
+        userId,
+        proposalId: proposal.id,
+        text,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    updateProposal(proposal.id, { comments: nextComments });
+    setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: '' }));
+  };
+
+  const updateEditorAlternativeDraftField = (
+    proposalId: string,
+    key: keyof ProposalFlowAlternativeDraft,
+    value: string
+  ) => {
+    setEditorAlternativeDraftByProposalId((prev) => ({
+      ...prev,
+      [proposalId]: {
+        ...(prev[proposalId] || {
+          startDate: '',
+          endDate: '',
+          time: '',
+          place: '',
+        }),
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleSubmitEditorAlternative = (proposal: Proposal) => {
+    const draft = editorAlternativeDraftByProposalId[proposal.id] || {
+      startDate: '',
+      endDate: '',
+      time: '',
+      place: '',
+    };
+    const dateText = formatDateRangeText(
+      draft.startDate.trim(),
+      proposal.type === 'sejour' ? draft.endDate.trim() : draft.startDate.trim()
+    );
+    const timeText = draft.time.trim();
+    const placeText = draft.place.trim();
+    if (!dateText && !timeText && !placeText) return;
+
+    if (dateText) {
+      const { impliedDates } = proposalThreadStore.addDateFieldChange(proposal.id, userId, dateText);
+      if (impliedDates.length > 0) {
+        const current = getAvailability(userId, proposal.id);
+        const nextDates = Array.from(new Set([...(current?.dates || []), ...impliedDates])).sort();
+        setAvailability({
+          id: current?.id || generateId(),
+          userId,
+          proposalId: proposal.id,
+          dates: nextDates,
+          timeSlots: current?.timeSlots,
+        });
+      }
+    }
+    if (timeText) proposalThreadStore.addFieldChange(proposal.id, userId, 'time', timeText);
+    if (placeText) proposalThreadStore.addFieldChange(proposal.id, userId, 'place', placeText);
+
+    setEditorAlternativeDraftByProposalId((prev) => ({
+      ...prev,
+      [proposal.id]: { startDate: '', endDate: '', time: '', place: '' },
+    }));
+    setProposalFeedRefreshTick((tick) => tick + 1);
+  };
+
+  const updateProposalFlowEditField = (
+    proposalId: string,
+    key: keyof ProposalFlowEditDraft,
+    value: string
+  ) => {
+    setProposalFlowEditDrafts((prev) => ({
+      ...prev,
+      [proposalId]: {
+        ...(prev[proposalId] || {
+          title: '',
+          startDate: '',
+          endDate: '',
+          time: '',
+          place: '',
+        }),
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleSaveProposalFlowEdit = (proposal: Proposal) => {
+    const draft = proposalFlowEditDrafts[proposal.id] || buildProposalFlowEditDraft(proposal);
+    const nextTitle = draft.title.trim();
+    if (!nextTitle) {
+      setError('Title is required.');
+      return;
+    }
+
+    const nextSpecifics = { ...(proposal.specifics || {}) };
+    const dateText = formatDateRangeText(draft.startDate.trim(), draft.endDate.trim());
+    const timeText = draft.time.trim();
+    const placeText = draft.place.trim();
+
+    if (dateText) nextSpecifics.date = dateText;
+    else delete nextSpecifics.date;
+    if (timeText) nextSpecifics.time = timeText;
+    else delete nextSpecifics.time;
+    if (placeText) nextSpecifics.location = placeText;
+    else delete nextSpecifics.location;
+
+    setProposalFlowSavingById((prev) => ({ ...prev, [proposal.id]: true }));
+    updateProposal(proposal.id, {
+      title: nextTitle,
+      specifics: nextSpecifics,
+    });
+    setProposalFeedRefreshTick((tick) => tick + 1);
+    setProposalFlowSavingById((prev) => ({ ...prev, [proposal.id]: false }));
   };
 
   const handleAddToCalendar = (proposal: Proposal) => {
@@ -890,6 +1302,29 @@ export function AiAssistantPanel({
       ? proposalFlowDraftValuesByMessageId[latestProposalFlowActionMessageId] ||
         getInitialDraftValues(latestProposalFlowActionProposal)
       : null;
+  const userNameById = new Map(displayGroupUsers.map((member) => [member.id, member.name]));
+  const currentUserIsAdmin = displayGroupUsers.some(
+    (member) => member.id === userId && member.isAdmin
+  );
+  const proposalFlowEditorUsers = currentUserIsAdmin
+    ? displayGroupUsers
+    : displayGroupUsers.filter((member) => member.id === userId).length > 0
+      ? displayGroupUsers.filter((member) => member.id === userId)
+      : [{ id: userId, name: userNameById.get(userId) || 'Me', isAdmin: false }];
+  const editableProposalsForSelectedUser = proposals
+    .filter((proposal) => proposal.createdBy === proposalFlowEditorUserId)
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const selectedEditableProposal = proposalFlowEditorProposalId
+    ? editableProposalsForSelectedUser.find(
+        (proposal) => proposal.id === proposalFlowEditorProposalId
+      ) || null
+    : null;
+  const canEditSelectedProposal =
+    Boolean(selectedEditableProposal) &&
+    (currentUserIsAdmin || selectedEditableProposal?.createdBy === userId);
+  const showProposalFlowEditorOnly =
+    proposalFlow && isProposalFlowEditorOpen && Boolean(selectedEditableProposal);
 
   if (cardDeckMode) {
     return (
@@ -919,40 +1354,55 @@ export function AiAssistantPanel({
         )}
         {proposalFlow ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-              {messages.length > 0 && (
-                <div className="space-y-2">
-                  {messages.map((message) => {
+            {!showProposalFlowEditorOnly && (
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                {messages.length > 0 && (
+                  <div className="space-y-2">
+                    {messages.map((message) => {
                     const draftProposal = actionProposalsByMessageId[message.id];
                     const shouldShowDraftDetails =
                       message.role === 'assistant' &&
                       Boolean(draftProposal) &&
                       !hiddenActionMessageIds[message.id];
+                    const shouldShowMessageBubble =
+                      !(
+                        message.role === 'assistant' &&
+                        Boolean(draftProposal) &&
+                        !hiddenActionMessageIds[message.id]
+                      );
                     const draftValues = draftProposal
                       ? proposalFlowDraftValuesByMessageId[message.id] || getInitialDraftValues(draftProposal)
                       : null;
+                    const draftDateRange = draftValues
+                      ? parseDateRangeFromText(draftValues.dates)
+                      : { startDate: '', endDate: '' };
+                    const isSejourDraft = draftProposal?.payload?.proposalDraft?.type === 'sejour';
+                    const alternativeDraft = proposalFlowAlternativeDraftsByMessageId[message.id] || {
+                      startDate: '',
+                      endDate: '',
+                      time: '',
+                      place: '',
+                    };
+                    const pendingAlternatives =
+                      pendingAlternativeSuggestionsByMessageId[message.id] || [];
                     return (
                       <div key={message.id} className="space-y-1.5">
-                        <div
-                          className={`rounded px-3 py-2 text-sm ${
-                            message.role === 'user'
-                              ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
-                              : 'border border-gray-200 bg-white text-gray-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
-                          }`}
-                        >
-                          <div className="text-[10px] uppercase tracking-wide opacity-70">
-                            {message.role === 'assistant' ? 'Snooky' : message.role}
+                        {shouldShowMessageBubble && (
+                          <div
+                            className={`rounded px-3 py-2 text-sm ${
+                              message.role === 'user'
+                                ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
+                                : 'border border-gray-200 bg-white text-gray-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+                            }`}
+                          >
+                            <div className="text-[10px] uppercase tracking-wide opacity-70">
+                              {message.role === 'assistant' ? 'Snooky' : message.role}
+                            </div>
+                            <div className="whitespace-pre-wrap break-words">{message.content}</div>
                           </div>
-                          <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                        </div>
+                        )}
                         {shouldShowDraftDetails && (
                           <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                              Drafted details
-                            </p>
-                            <p className="mt-1 text-[11px]">
-                              Please edit and Confirm or ask me for more help.
-                            </p>
                             {draftProposal && draftValues && (
                               <div className="mt-1 space-y-1.5">
                                 <input
@@ -969,25 +1419,61 @@ export function AiAssistantPanel({
                                   placeholder="Title"
                                   className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
                                 />
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  <input
-                                    type="date"
-                                    value={
-                                      /^\d{4}-\d{2}-\d{2}$/.test(draftValues.dates.trim())
-                                        ? draftValues.dates.trim()
-                                        : ''
-                                    }
-                                    onChange={(e) =>
-                                      updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
-                                        'dates',
-                                        e.target.value
-                                      )
-                                    }
-                                    aria-label="Date"
-                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                  />
+                                <div className={`grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                                  {isSejourDraft ? (
+                                    <>
+                                      <input
+                                        type="date"
+                                        value={draftDateRange.startDate}
+                                        onChange={(e) =>
+                                          updateProposalFlowDraftField(
+                                            message.id,
+                                            draftProposal,
+                                            'dates',
+                                            formatDateRangeText(
+                                              e.target.value,
+                                              draftDateRange.endDate
+                                            )
+                                          )
+                                        }
+                                        aria-label="Start date"
+                                        className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={draftDateRange.endDate}
+                                        min={draftDateRange.startDate || undefined}
+                                        onChange={(e) =>
+                                          updateProposalFlowDraftField(
+                                            message.id,
+                                            draftProposal,
+                                            'dates',
+                                            formatDateRangeText(
+                                              draftDateRange.startDate,
+                                              e.target.value
+                                            )
+                                          )
+                                        }
+                                        aria-label="End date"
+                                        className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                      />
+                                    </>
+                                  ) : (
+                                    <input
+                                      type="date"
+                                      value={draftDateRange.startDate}
+                                      onChange={(e) =>
+                                        updateProposalFlowDraftField(
+                                          message.id,
+                                          draftProposal,
+                                          'dates',
+                                          e.target.value
+                                        )
+                                      }
+                                      aria-label="Date"
+                                      className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                    />
+                                  )}
                                   <input
                                     type="time"
                                     value={
@@ -995,6 +1481,7 @@ export function AiAssistantPanel({
                                         ? draftValues.times.trim()
                                         : ''
                                     }
+                                    step={900}
                                     onChange={(e) =>
                                       updateProposalFlowDraftField(
                                         message.id,
@@ -1063,18 +1550,524 @@ export function AiAssistantPanel({
                                   placeholder="Comments"
                                   className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
                                 />
+                                <div className="rounded border border-sky-300 bg-white p-2 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100">
+                                  <p className="font-semibold text-sky-900 dark:text-sky-200">
+                                    Add alternative suggestions before confirming
+                                  </p>
+                                  <div className={`mt-1 grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                                    {isSejourDraft ? (
+                                      <>
+                                        <input
+                                          type="date"
+                                          value={alternativeDraft.startDate}
+                                          onChange={(e) =>
+                                            updateProposalFlowAlternativeDraft(
+                                              message.id,
+                                              'startDate',
+                                              e.target.value
+                                            )
+                                          }
+                                          aria-label="Alternative start date"
+                                          className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        />
+                                        <input
+                                          type="date"
+                                          value={alternativeDraft.endDate}
+                                          min={alternativeDraft.startDate || undefined}
+                                          onChange={(e) =>
+                                            updateProposalFlowAlternativeDraft(
+                                              message.id,
+                                              'endDate',
+                                              e.target.value
+                                            )
+                                          }
+                                          aria-label="Alternative end date"
+                                          className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        />
+                                      </>
+                                    ) : (
+                                      <input
+                                        type="date"
+                                        value={alternativeDraft.startDate}
+                                        onChange={(e) => {
+                                          updateProposalFlowAlternativeDraft(
+                                            message.id,
+                                            'startDate',
+                                            e.target.value
+                                          );
+                                          updateProposalFlowAlternativeDraft(
+                                            message.id,
+                                            'endDate',
+                                            e.target.value
+                                          );
+                                        }}
+                                        aria-label="Alternative date"
+                                        className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                      />
+                                    )}
+                                    <input
+                                      type="time"
+                                      value={alternativeDraft.time}
+                                      step={900}
+                                      onChange={(e) =>
+                                        updateProposalFlowAlternativeDraft(
+                                          message.id,
+                                          'time',
+                                          e.target.value
+                                        )
+                                      }
+                                      aria-label="Alternative time"
+                                      className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={alternativeDraft.place}
+                                      onChange={(e) =>
+                                        updateProposalFlowAlternativeDraft(
+                                          message.id,
+                                          'place',
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="Alternative place"
+                                      className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900"
+                                    />
+                                  </div>
+                                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => addPendingAlternativeSuggestion(message.id)}
+                                      className="rounded bg-sky-700 px-2 py-1 text-[11px] font-medium text-white hover:bg-sky-800"
+                                    >
+                                      Queue Alternative
+                                    </button>
+                                    <span className="text-[10px] text-sky-700 dark:text-sky-300">
+                                      {pendingAlternatives.length} queued
+                                    </span>
+                                  </div>
+                                  {pendingAlternatives.length > 0 && (
+                                    <div className="mt-1.5 space-y-1">
+                                      {pendingAlternatives.map((entry) => (
+                                        <div key={entry.id} className="flex items-center gap-1.5">
+                                          <span className="flex-1 truncate">
+                                            {[entry.dateText, entry.timeText, entry.placeText]
+                                              .filter(Boolean)
+                                              .join(' | ')}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removePendingAlternativeSuggestion(message.id, entry.id)
+                                            }
+                                            className="rounded border border-sky-300 px-1.5 py-0.5 text-[10px] dark:border-sky-900/60"
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
                         )}
                       </div>
                     );
-                  })}
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-2 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+              <div className="flex flex-wrap items-center gap-2">
+                {currentUserIsAdmin ? (
+                  <select
+                    value={proposalFlowEditorUserId}
+                    onChange={(e) => {
+                      setProposalFlowEditorUserId(e.target.value);
+                      setIsProposalFlowEditorOpen(false);
+                    }}
+                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    {proposalFlowEditorUsers.map((member) => (
+                      <option key={`proposal-flow-editor-user-${member.id}`} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-indigo-800 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200">
+                    {userNameById.get(userId) || 'My activities'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsProposalFlowEditorOpen((prev) => !prev)}
+                  disabled={editableProposalsForSelectedUser.length === 0}
+                  className="rounded bg-indigo-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isProposalFlowEditorOpen ? 'Hide Activity Editor' : 'Open Activity Editor'}
+                </button>
+                {showProposalFlowEditorOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setIsProposalFlowEditorOpen(false)}
+                    className="rounded border border-indigo-300 bg-white px-2.5 py-1.5 text-xs text-indigo-800 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200"
+                  >
+                    Back To Snooky
+                  </button>
+                )}
+                {editableProposalsForSelectedUser.length === 0 && (
+                  <span className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                    No activities for selected user.
+                  </span>
+                )}
+              </div>
+
+              {isProposalFlowEditorOpen && selectedEditableProposal && (
+                <div className="mt-2 space-y-2 rounded border border-indigo-200 bg-white p-2 dark:border-indigo-900/60 dark:bg-slate-900">
+                  <select
+                    value={proposalFlowEditorProposalId || ''}
+                    onChange={(e) => setProposalFlowEditorProposalId(e.target.value || null)}
+                    className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    {editableProposalsForSelectedUser.map((proposal) => (
+                      <option key={`proposal-flow-editor-proposal-${proposal.id}`} value={proposal.id}>
+                        {proposal.title}
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const proposal = selectedEditableProposal;
+                    const draft =
+                      proposalFlowEditDrafts[proposal.id] || buildProposalFlowEditDraft(proposal);
+                    const contributions = proposalThreadStore
+                      .listForProposal(proposal.id)
+                      .filter((entry) => entry.kind === 'field_change' && entry.userId !== userId);
+                    const dateSuggestions = contributions.filter((entry) => entry.field === 'date');
+                    const timeSuggestions = contributions.filter((entry) => entry.field === 'time');
+                    const placeSuggestions = contributions.filter((entry) => entry.field === 'place');
+
+                    return (
+                      <>
+                        <input
+                          type="text"
+                          value={draft.title}
+                          onChange={(e) =>
+                            updateProposalFlowEditField(proposal.id, 'title', e.target.value)
+                          }
+                          disabled={!canEditSelectedProposal}
+                          placeholder="Title"
+                          className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
+                        />
+                        <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                          {proposal.type === 'sejour' ? (
+                            <>
+                              <input
+                                type="date"
+                                value={draft.startDate}
+                                onChange={(e) =>
+                                  updateProposalFlowEditField(proposal.id, 'startDate', e.target.value)
+                                }
+                                disabled={!canEditSelectedProposal}
+                                aria-label="Proposal start date"
+                                className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                              />
+                              <input
+                                type="date"
+                                value={draft.endDate}
+                                min={draft.startDate || undefined}
+                                onChange={(e) =>
+                                  updateProposalFlowEditField(proposal.id, 'endDate', e.target.value)
+                                }
+                                disabled={!canEditSelectedProposal}
+                                aria-label="Proposal end date"
+                                className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                              />
+                            </>
+                          ) : (
+                            <input
+                              type="date"
+                              value={draft.startDate}
+                              onChange={(e) => {
+                                updateProposalFlowEditField(proposal.id, 'startDate', e.target.value);
+                                updateProposalFlowEditField(proposal.id, 'endDate', e.target.value);
+                              }}
+                              disabled={!canEditSelectedProposal}
+                              aria-label="Proposal date"
+                              className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                            />
+                          )}
+                          <input
+                            type="time"
+                            value={draft.time}
+                            step={900}
+                            onChange={(e) =>
+                              updateProposalFlowEditField(proposal.id, 'time', e.target.value)
+                            }
+                            disabled={!canEditSelectedProposal}
+                            aria-label="Proposal time"
+                            className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={draft.place}
+                          onChange={(e) =>
+                            updateProposalFlowEditField(proposal.id, 'place', e.target.value)
+                          }
+                          disabled={!canEditSelectedProposal}
+                          placeholder="Place"
+                          className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
+                        />
+                        <div className="space-y-1 rounded border border-indigo-200 bg-indigo-50/70 p-2 text-[11px] dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                          <p className="font-semibold text-indigo-900 dark:text-indigo-200">
+                            Suggest alternative
+                          </p>
+                          {(() => {
+                            const altDraft = editorAlternativeDraftByProposalId[proposal.id] || {
+                              startDate: '',
+                              endDate: '',
+                              time: '',
+                              place: '',
+                            };
+                            return (
+                              <>
+                                <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                                  <input
+                                    type="date"
+                                    value={altDraft.startDate}
+                                    onChange={(e) => {
+                                      updateEditorAlternativeDraftField(
+                                        proposal.id,
+                                        'startDate',
+                                        e.target.value
+                                      );
+                                      if (proposal.type !== 'sejour') {
+                                        updateEditorAlternativeDraftField(
+                                          proposal.id,
+                                          'endDate',
+                                          e.target.value
+                                        );
+                                      }
+                                    }}
+                                    disabled={!canEditSelectedProposal}
+                                    aria-label="Alternative date"
+                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                  />
+                                  {proposal.type === 'sejour' && (
+                                    <input
+                                      type="date"
+                                      value={altDraft.endDate}
+                                      min={altDraft.startDate || undefined}
+                                      onChange={(e) =>
+                                        updateEditorAlternativeDraftField(
+                                          proposal.id,
+                                          'endDate',
+                                          e.target.value
+                                        )
+                                      }
+                                      disabled={!canEditSelectedProposal}
+                                      aria-label="Alternative end date"
+                                      className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                    />
+                                  )}
+                                  <input
+                                    type="time"
+                                    value={altDraft.time}
+                                    step={900}
+                                    onChange={(e) =>
+                                      updateEditorAlternativeDraftField(
+                                        proposal.id,
+                                        'time',
+                                        e.target.value
+                                      )
+                                    }
+                                    disabled={!canEditSelectedProposal}
+                                    aria-label="Alternative time"
+                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={altDraft.place}
+                                    onChange={(e) =>
+                                      updateEditorAlternativeDraftField(
+                                        proposal.id,
+                                        'place',
+                                        e.target.value
+                                      )
+                                    }
+                                    disabled={!canEditSelectedProposal}
+                                    placeholder="Alternative place"
+                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900"
+                                  />
+                                </div>
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSubmitEditorAlternative(proposal)}
+                                    disabled={!canEditSelectedProposal}
+                                    className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] text-indigo-800 hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200 dark:hover:bg-indigo-900/20"
+                                  >
+                                    Add Alternative
+                                  </button>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        {(dateSuggestions.length > 0 ||
+                          timeSuggestions.length > 0 ||
+                          placeSuggestions.length > 0) && (
+                          <div className="space-y-1.5 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                            <p className="font-semibold">Alternatives from others</p>
+                            {dateSuggestions.map((change) => {
+                              const text =
+                                typeof change.value.dateText === 'string'
+                                  ? String(change.value.dateText)
+                                  : typeof change.value.text === 'string'
+                                    ? String(change.value.text)
+                                    : '';
+                              const parsed = parseDateRangeFromText(text);
+                              return (
+                                <div key={`proposal-flow-alt-date-${change.id}`} className="flex items-center gap-1.5">
+                                  <span className="flex-1 truncate">
+                                    {userNameById.get(change.userId) || 'Someone'} suggested date:{' '}
+                                    {text || 'unspecified'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateProposalFlowEditField(proposal.id, 'startDate', parsed.startDate);
+                                      updateProposalFlowEditField(
+                                        proposal.id,
+                                        'endDate',
+                                        proposal.type === 'sejour' ? parsed.endDate : parsed.startDate
+                                      );
+                                    }}
+                                    disabled={!canEditSelectedProposal}
+                                    className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
+                                  >
+                                    Use
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            {timeSuggestions.map((change) => {
+                              const text =
+                                typeof change.value.text === 'string'
+                                  ? String(change.value.text)
+                                  : '';
+                              return (
+                                <div key={`proposal-flow-alt-time-${change.id}`} className="flex items-center gap-1.5">
+                                  <span className="flex-1 truncate">
+                                    {userNameById.get(change.userId) || 'Someone'} suggested time:{' '}
+                                    {text || 'unspecified'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateProposalFlowEditField(proposal.id, 'time', text)}
+                                    disabled={!canEditSelectedProposal}
+                                    className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
+                                  >
+                                    Use
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            {placeSuggestions.map((change) => {
+                              const text =
+                                typeof change.value.text === 'string'
+                                  ? String(change.value.text)
+                                  : '';
+                              return (
+                                <div key={`proposal-flow-alt-place-${change.id}`} className="flex items-center gap-1.5">
+                                  <span className="flex-1 truncate">
+                                    {userNameById.get(change.userId) || 'Someone'} suggested place:{' '}
+                                    {text || 'unspecified'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateProposalFlowEditField(proposal.id, 'place', text)}
+                                    disabled={!canEditSelectedProposal}
+                                    className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
+                                  >
+                                    Use
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div className="space-y-1 rounded border border-indigo-200 bg-indigo-50/70 p-2 text-[11px] dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                          <p className="font-semibold text-indigo-900 dark:text-indigo-200">Comments</p>
+                          {(proposal.comments || []).length > 0 ? (
+                            <div className="space-y-1">
+                              {(proposal.comments || []).map((comment) => (
+                                <div key={comment.id} className="rounded bg-white px-2 py-1 dark:bg-slate-900">
+                                  <span className="font-medium">
+                                    {userNameById.get(comment.userId) || 'User'}:
+                                  </span>{' '}
+                                  {comment.text}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-indigo-700 dark:text-indigo-300">No comments yet.</p>
+                          )}
+                          <div className="flex items-start gap-1.5">
+                            <textarea
+                              value={commentDraftByProposalId[proposal.id] || ''}
+                              onChange={(e) =>
+                                setCommentDraftByProposalId((prev) => ({
+                                  ...prev,
+                                  [proposal.id]: e.target.value,
+                                }))
+                              }
+                              rows={2}
+                              placeholder="Add a comment"
+                              className="min-h-[3.5rem] flex-1 rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddProposalComment(proposal)}
+                              disabled={!(commentDraftByProposalId[proposal.id] || '').trim()}
+                              className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] text-indigo-800 hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200 dark:hover:bg-indigo-900/20"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                        {canEditSelectedProposal ? (
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveProposalFlowEdit(proposal)}
+                              disabled={
+                                proposalFlowSavingById[proposal.id] ||
+                                draft.title.trim().length === 0
+                              }
+                              className="rounded bg-indigo-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {proposalFlowSavingById[proposal.id] ? 'Saving...' : 'Save Changes'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                            View only. You can only edit your own activities.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
-            <div className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex items-center gap-2">
+            {!showProposalFlowEditorOnly && (
+              <div className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex items-center gap-2">
                 {latestProposalFlowActionMessageId &&
                   latestProposalFlowActionProposal &&
                   latestProposalFlowDraftValues && (
@@ -1117,8 +2110,9 @@ export function AiAssistantPanel({
                 >
                   Activities
                 </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : sortedProposals.length === 0 ? (
           <div className="flex flex-1 items-center justify-center rounded-lg bg-white p-3 text-xs text-gray-600 dark:bg-slate-900 dark:text-slate-300">
@@ -1246,18 +2240,101 @@ export function AiAssistantPanel({
                       ))}
                     </div>
                     <div className="mt-2 space-y-2.5 rounded-lg border border-white/70 bg-white/70 p-2.5 text-sm leading-6 text-gray-800 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200">
-                      <div className="grid grid-cols-1 gap-1.5">
-                        <div>
-                          <span className="font-semibold">Date:</span>{' '}
-                          {baselineDateText || 'Not set'}
+                      <div className="grid grid-cols-1 gap-2">
+                        <div className="space-y-1">
+                          <div>
+                            <span className="font-semibold">Date:</span>{' '}
+                            {baselineDateText || 'Not set'}
+                          </div>
+                          {displayDateChanges.length > 0 && (
+                            <div className="space-y-1 pl-2">
+                              {displayDateChanges.map((change) => {
+                                const optionId = `date-${change.id}`;
+                                return (
+                                  <label key={`date-${change.id}`} className="flex items-start gap-2 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
+                                      onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                    />
+                                    <span>
+                                      <span className="font-medium">
+                                        {userInitials(userNames.get(change.userId) || '?')}:
+                                      </span>{' '}
+                                      {typeof change.value.dateText === 'string'
+                                        ? String(change.value.dateText)
+                                        : typeof change.value.text === 'string'
+                                          ? String(change.value.text)
+                                          : 'unspecified'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <span className="font-semibold">Time:</span>{' '}
-                          {formatTo24HourTimeText(proposal.specifics?.time || 'Not set')}
+                        <div className="space-y-1">
+                          <div>
+                            <span className="font-semibold">Time:</span>{' '}
+                            {formatTo24HourTimeText(proposal.specifics?.time || 'Not set')}
+                          </div>
+                          {displayTimeChanges.length > 0 && (
+                            <div className="space-y-1 pl-2">
+                              {displayTimeChanges.map((change) => {
+                                const optionId = `time-${change.id}`;
+                                return (
+                                  <label key={`time-${change.id}`} className="flex items-start gap-2 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
+                                      onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                    />
+                                    <span>
+                                      <span className="font-medium">
+                                        {userInitials(userNames.get(change.userId) || '?')}:
+                                      </span>{' '}
+                                      {typeof change.value.text === 'string'
+                                        ? formatTo24HourTimeText(String(change.value.text))
+                                        : 'unspecified'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <span className="font-semibold">Place:</span>{' '}
-                          {proposal.specifics?.location || 'Not set'}
+                        <div className="space-y-1">
+                          <div>
+                            <span className="font-semibold">Place:</span>{' '}
+                            {proposal.specifics?.location || 'Not set'}
+                          </div>
+                          {displayPlaceChanges.length > 0 && (
+                            <div className="space-y-1 pl-2">
+                              {displayPlaceChanges.map((change) => {
+                                const optionId = `place-${change.id}`;
+                                return (
+                                  <label key={`place-${change.id}`} className="flex items-start gap-2 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
+                                      onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                    />
+                                    <span>
+                                      <span className="font-medium">
+                                        {userInitials(userNames.get(change.userId) || '?')}:
+                                      </span>{' '}
+                                      {typeof change.value.text === 'string'
+                                        ? String(change.value.text)
+                                        : 'unspecified'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div>
@@ -1267,86 +2344,56 @@ export function AiAssistantPanel({
                         <span className="font-semibold">Requirements:</span> {requirementsNote}
                       </div>
                       <div className="space-y-1.5">
-                        <p className="font-semibold">Suggested alternatives</p>
-                        {displayDateChanges.length === 0 &&
-                        displayTimeChanges.length === 0 &&
-                        displayPlaceChanges.length === 0 ? (
-                          <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
-                            No alternatives suggested yet.
-                          </p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {displayDateChanges.map((change) => {
-                              const optionId = `date-${change.id}`;
-                              return (
-                              <label key={`date-${change.id}`} className="flex items-start gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
-                                  onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                  className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                />
-                                <span>
-                                  <span className="font-medium">
-                                    {userInitials(userNames.get(change.userId) || '?')}:
-                                  </span>{' '}
-                                  <span className="font-medium">Date:</span>{' '}
-                                  {typeof change.value.dateText === 'string'
-                                    ? String(change.value.dateText)
-                                    : typeof change.value.text === 'string'
-                                      ? String(change.value.text)
-                                      : 'unspecified'}
-                                </span>
-                              </label>
-                              );
-                            })}
-                            {displayTimeChanges.map((change) => {
-                              const optionId = `time-${change.id}`;
-                              return (
-                              <label key={`time-${change.id}`} className="flex items-start gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
-                                  onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                  className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                />
-                                <span>
-                                  <span className="font-medium">
-                                    {userInitials(userNames.get(change.userId) || '?')}:
-                                  </span>{' '}
-                                  <span className="font-medium">Time:</span>{' '}
-                                  {typeof change.value.text === 'string'
-                                    ? formatTo24HourTimeText(String(change.value.text))
-                                    : 'unspecified'}
-                                </span>
-                              </label>
-                              );
-                            })}
-                            {displayPlaceChanges.map((change) => {
-                              const optionId = `place-${change.id}`;
-                              return (
-                              <label key={`place-${change.id}`} className="flex items-start gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
-                                  onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                  className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                />
-                                <span>
-                                  <span className="font-medium">
-                                    {userInitials(userNames.get(change.userId) || '?')}:
-                                  </span>{' '}
-                                  <span className="font-medium">Place:</span>{' '}
-                                  {typeof change.value.text === 'string'
-                                    ? String(change.value.text)
-                                    : 'unspecified'}
-                                </span>
-                              </label>
-                              );
-                            })}
+                        <p className="font-semibold">Comments</p>
+                        {(proposal.comments || []).length > 0 ? (
+                          <div className="space-y-1">
+                            {(proposal.comments || []).map((comment) => (
+                              <div
+                                key={`proposal-comment-${comment.id}`}
+                                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                              >
+                                <span className="font-medium">
+                                  {userNameById.get(comment.userId) || 'User'}:
+                                </span>{' '}
+                                {comment.text}
+                              </div>
+                            ))}
                           </div>
+                        ) : (
+                          <p className="text-xs text-gray-600 dark:text-slate-300">
+                            No comments yet.
+                          </p>
                         )}
+                        <div className="flex items-start gap-1.5">
+                          <textarea
+                            value={commentDraftByProposalId[proposal.id] || ''}
+                            onChange={(e) =>
+                              setCommentDraftByProposalId((prev) => ({
+                                ...prev,
+                                [proposal.id]: e.target.value,
+                              }))
+                            }
+                            rows={2}
+                            placeholder="Add a comment"
+                            className="min-h-[3.25rem] flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddProposalComment(proposal)}
+                            disabled={!(commentDraftByProposalId[proposal.id] || '').trim()}
+                            className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            Add
+                          </button>
+                        </div>
                       </div>
+                      {displayDateChanges.length === 0 &&
+                      displayTimeChanges.length === 0 &&
+                      displayPlaceChanges.length === 0 && (
+                        <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
+                          No alternatives suggested yet.
+                        </p>
+                      )}
                     </div>
 
                     {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
@@ -1363,40 +2410,78 @@ export function AiAssistantPanel({
                             Close
                           </button>
                         </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                        <div className={`grid grid-cols-1 gap-2 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
                           <input
-                            type="text"
-                            value={proposalCardDrafts[proposal.id]?.dateSuggestion || ''}
+                            type="date"
+                            value={proposalCardDrafts[proposal.id]?.startDateSuggestion || ''}
                             onChange={(e) =>
                               setProposalCardDrafts((prev) => ({
                                 ...prev,
                                 [proposal.id]: {
-                                  dateSuggestion: e.target.value,
+                                  dateSuggestion: formatDateRangeText(
+                                    e.target.value,
+                                    proposal.type === 'sejour'
+                                      ? prev[proposal.id]?.endDateSuggestion || ''
+                                      : e.target.value
+                                  ),
+                                  startDateSuggestion: e.target.value,
+                                  endDateSuggestion:
+                                    proposal.type === 'sejour'
+                                      ? prev[proposal.id]?.endDateSuggestion || ''
+                                      : e.target.value,
                                   timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
                                   placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
                                   isSuggestModalOpen: true,
                                 },
                               }))
                             }
-                            placeholder="Date(s): 2026-08-10 to 2026-08-14"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            aria-label={proposal.type === 'sejour' ? 'Alternative start date' : 'Alternative date'}
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
                           />
+                          {proposal.type === 'sejour' && (
+                            <input
+                              type="date"
+                              value={proposalCardDrafts[proposal.id]?.endDateSuggestion || ''}
+                              min={proposalCardDrafts[proposal.id]?.startDateSuggestion || undefined}
+                              onChange={(e) =>
+                                setProposalCardDrafts((prev) => ({
+                                  ...prev,
+                                  [proposal.id]: {
+                                    dateSuggestion: formatDateRangeText(
+                                      prev[proposal.id]?.startDateSuggestion || '',
+                                      e.target.value
+                                    ),
+                                    startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
+                                    endDateSuggestion: e.target.value,
+                                    timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
+                                    placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
+                                    isSuggestModalOpen: true,
+                                  },
+                                }))
+                              }
+                              aria-label="Alternative end date"
+                              className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                            />
+                          )}
                           <input
-                            type="text"
+                            type="time"
                             value={proposalCardDrafts[proposal.id]?.timeSuggestion || ''}
+                            step={900}
                             onChange={(e) =>
                               setProposalCardDrafts((prev) => ({
                                 ...prev,
                                 [proposal.id]: {
                                   dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
+                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
+                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
                                   timeSuggestion: e.target.value,
                                   placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
                                   isSuggestModalOpen: true,
                                 },
                               }))
                             }
-                            placeholder="Time: evening / 19:00"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            aria-label="Alternative time"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
                           />
                           <input
                             type="text"
@@ -1406,6 +2491,8 @@ export function AiAssistantPanel({
                                 ...prev,
                                 [proposal.id]: {
                                   dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
+                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
+                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
                                   timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
                                   placeSuggestion: e.target.value,
                                   isSuggestModalOpen: true,
@@ -1422,7 +2509,8 @@ export function AiAssistantPanel({
                             onClick={() => handleSubmitAlternatives(proposal)}
                             disabled={
                               !(
-                                proposalCardDrafts[proposal.id]?.dateSuggestion?.trim() ||
+                                proposalCardDrafts[proposal.id]?.startDateSuggestion?.trim() ||
+                                proposalCardDrafts[proposal.id]?.endDateSuggestion?.trim() ||
                                 proposalCardDrafts[proposal.id]?.timeSuggestion?.trim() ||
                                 proposalCardDrafts[proposal.id]?.placeSuggestion?.trim()
                               )
@@ -1486,52 +2574,135 @@ export function AiAssistantPanel({
           onClose={() => setCalendarPopup(null)}
           title={calendarPopup ? `${calendarPopup.proposalTitle} calendar` : 'Proposal calendar'}
         >
-          {calendarPopup && (
-            <div className="space-y-3 text-xs">
-              <p className="text-sm font-semibold text-gray-800 dark:text-slate-100">
-                {formatIsoMonthLabel(calendarPopup.anchorMonthIso)}
-              </p>
-              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-gray-500 dark:text-slate-400">
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => (
-                  <div key={`weekday-${label}`}>{label}</div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1">
-                {buildMonthCells(calendarPopup.anchorMonthIso).map((cell, index) => {
-                  if (!cell.iso || !cell.day) {
-                    return <div key={`blank-${index}`} className="h-8 rounded-md bg-transparent" />;
-                  }
-                  const isOriginal = calendarPopup.originalDates.includes(cell.iso);
-                  const isAlternative = calendarPopup.alternativeDates.includes(cell.iso);
-                  const dayClass = isOriginal && isAlternative
-                    ? 'border-sky-300 bg-gradient-to-r from-sky-100 to-amber-100 text-slate-900 dark:border-sky-700 dark:from-sky-900/30 dark:to-amber-900/30 dark:text-slate-100'
-                    : isOriginal
-                      ? 'border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-100'
-                      : isAlternative
-                        ? 'border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100'
-                        : 'border-gray-200 bg-white text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300';
-                  return (
-                    <div
-                      key={cell.iso}
-                      className={`flex h-8 items-center justify-center rounded-md border text-[11px] font-medium ${dayClass}`}
-                    >
-                      {cell.day}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-sky-400 dark:bg-sky-300" />
-                  Original dates
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400 dark:bg-amber-300" />
-                  Alternative dates
-                </span>
-              </div>
-            </div>
-          )}
+          {calendarPopup &&
+            (() => {
+              const originalDateSet = new Set(calendarPopup.originalDates);
+              const alternativeDateSet = new Set(calendarPopup.alternativeDates);
+              const monthIsos = collectCalendarMonthIsos(
+                calendarPopup.originalDates,
+                calendarPopup.alternativeDates,
+                calendarPopup.anchorMonthIso
+              );
+
+              return (
+                <div className="space-y-4 text-xs">
+                  {monthIsos.map((monthIso) => {
+                    const monthBoundaries = getMonthBoundaries(monthIso);
+                    const originalContinuesFromPreviousMonth =
+                      Boolean(monthBoundaries?.firstDayIso) &&
+                      originalDateSet.has(monthBoundaries!.firstDayIso) &&
+                      originalDateSet.has(shiftIsoDateByDays(monthBoundaries!.firstDayIso, -1) || '');
+                    const originalContinuesToNextMonth =
+                      Boolean(monthBoundaries?.lastDayIso) &&
+                      originalDateSet.has(monthBoundaries!.lastDayIso) &&
+                      originalDateSet.has(shiftIsoDateByDays(monthBoundaries!.lastDayIso, 1) || '');
+                    const alternativeContinuesFromPreviousMonth =
+                      Boolean(monthBoundaries?.firstDayIso) &&
+                      alternativeDateSet.has(monthBoundaries!.firstDayIso) &&
+                      alternativeDateSet.has(shiftIsoDateByDays(monthBoundaries!.firstDayIso, -1) || '');
+                    const alternativeContinuesToNextMonth =
+                      Boolean(monthBoundaries?.lastDayIso) &&
+                      alternativeDateSet.has(monthBoundaries!.lastDayIso) &&
+                      alternativeDateSet.has(shiftIsoDateByDays(monthBoundaries!.lastDayIso, 1) || '');
+
+                    return (
+                      <div key={`calendar-month-${monthIso}`} className="space-y-2">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {formatIsoMonthLabel(monthIso)}
+                        </p>
+                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-gray-500 dark:text-slate-400">
+                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => (
+                            <div key={`weekday-${monthIso}-${label}`}>{label}</div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {buildMonthCells(monthIso).map((cell, index) => {
+                            if (!cell.iso || !cell.day) {
+                              return (
+                                <div
+                                  key={`blank-${monthIso}-${index}`}
+                                  className="h-8 rounded-md bg-transparent"
+                                />
+                              );
+                            }
+                            const prevIso = shiftIsoDateByDays(cell.iso, -1);
+                            const nextIso = shiftIsoDateByDays(cell.iso, 1);
+                            const isOriginal = originalDateSet.has(cell.iso);
+                            const isAlternative = alternativeDateSet.has(cell.iso);
+                            const hasPrevOriginal = Boolean(prevIso && originalDateSet.has(prevIso));
+                            const hasNextOriginal = Boolean(nextIso && originalDateSet.has(nextIso));
+                            const hasPrevAlternative = Boolean(prevIso && alternativeDateSet.has(prevIso));
+                            const hasNextAlternative = Boolean(nextIso && alternativeDateSet.has(nextIso));
+
+                            return (
+                              <div
+                                key={`${monthIso}-${cell.iso}`}
+                                className="relative h-8 overflow-hidden rounded-md border border-gray-200 bg-white text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                              >
+                                {isOriginal && (
+                                  <div
+                                    className={`absolute top-1 h-2 bg-sky-300 dark:bg-sky-700 ${
+                                      hasPrevOriginal ? 'left-0' : 'left-0.5 rounded-l-md'
+                                    } ${hasNextOriginal ? 'right-0' : 'right-0.5 rounded-r-md'}`}
+                                  />
+                                )}
+                                {isAlternative && (
+                                  <div
+                                    className={`absolute bottom-1 h-2 bg-amber-300 dark:bg-amber-700 ${
+                                      hasPrevAlternative ? 'left-0' : 'left-0.5 rounded-l-md'
+                                    } ${hasNextAlternative ? 'right-0' : 'right-0.5 rounded-r-md'}`}
+                                  />
+                                )}
+                                <div className="relative z-10 flex h-full items-center justify-center text-[11px] font-medium">
+                                  {cell.day}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {(originalContinuesFromPreviousMonth ||
+                          originalContinuesToNextMonth ||
+                          alternativeContinuesFromPreviousMonth ||
+                          alternativeContinuesToNextMonth) && (
+                          <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                            {originalContinuesFromPreviousMonth && (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200">
+                                Original sejour continues from previous month
+                              </span>
+                            )}
+                            {originalContinuesToNextMonth && (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200">
+                                Original sejour continues to next month
+                              </span>
+                            )}
+                            {alternativeContinuesFromPreviousMonth && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                Alternative sejour continues from previous month
+                              </span>
+                            )}
+                            {alternativeContinuesToNextMonth && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                Alternative sejour continues to next month
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full bg-sky-400 dark:bg-sky-300" />
+                      Original dates (top line)
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400 dark:bg-amber-300" />
+                      Alternative dates (bottom line)
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
         </Modal>
       </div>
     );
@@ -1792,40 +2963,78 @@ export function AiAssistantPanel({
                             Close
                           </button>
                         </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                        <div className={`grid grid-cols-1 gap-2 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
                           <input
-                            type="text"
-                            value={proposalCardDrafts[proposal.id]?.dateSuggestion || ''}
+                            type="date"
+                            value={proposalCardDrafts[proposal.id]?.startDateSuggestion || ''}
                             onChange={(e) =>
                               setProposalCardDrafts((prev) => ({
                                 ...prev,
                                 [proposal.id]: {
-                                  dateSuggestion: e.target.value,
+                                  dateSuggestion: formatDateRangeText(
+                                    e.target.value,
+                                    proposal.type === 'sejour'
+                                      ? prev[proposal.id]?.endDateSuggestion || ''
+                                      : e.target.value
+                                  ),
+                                  startDateSuggestion: e.target.value,
+                                  endDateSuggestion:
+                                    proposal.type === 'sejour'
+                                      ? prev[proposal.id]?.endDateSuggestion || ''
+                                      : e.target.value,
                                   timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
                                   placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
                                   isSuggestModalOpen: true,
                                 },
                               }))
                             }
-                            placeholder="Date(s): 2026-08-10 to 2026-08-14"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            aria-label={proposal.type === 'sejour' ? 'Alternative start date' : 'Alternative date'}
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
                           />
+                          {proposal.type === 'sejour' && (
+                            <input
+                              type="date"
+                              value={proposalCardDrafts[proposal.id]?.endDateSuggestion || ''}
+                              min={proposalCardDrafts[proposal.id]?.startDateSuggestion || undefined}
+                              onChange={(e) =>
+                                setProposalCardDrafts((prev) => ({
+                                  ...prev,
+                                  [proposal.id]: {
+                                    dateSuggestion: formatDateRangeText(
+                                      prev[proposal.id]?.startDateSuggestion || '',
+                                      e.target.value
+                                    ),
+                                    startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
+                                    endDateSuggestion: e.target.value,
+                                    timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
+                                    placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
+                                    isSuggestModalOpen: true,
+                                  },
+                                }))
+                              }
+                              aria-label="Alternative end date"
+                              className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                            />
+                          )}
                           <input
-                            type="text"
+                            type="time"
                             value={proposalCardDrafts[proposal.id]?.timeSuggestion || ''}
+                            step={900}
                             onChange={(e) =>
                               setProposalCardDrafts((prev) => ({
                                 ...prev,
                                 [proposal.id]: {
                                   dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
+                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
+                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
                                   timeSuggestion: e.target.value,
                                   placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
                                   isSuggestModalOpen: true,
                                 },
                               }))
                             }
-                            placeholder="Time: evening / 19:00"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            aria-label="Alternative time"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
                           />
                           <input
                             type="text"
@@ -1835,6 +3044,8 @@ export function AiAssistantPanel({
                                 ...prev,
                                 [proposal.id]: {
                                   dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
+                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
+                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
                                   timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
                                   placeSuggestion: e.target.value,
                                   isSuggestModalOpen: true,
@@ -1851,7 +3062,8 @@ export function AiAssistantPanel({
                             onClick={() => handleSubmitAlternatives(proposal)}
                             disabled={
                               !(
-                                proposalCardDrafts[proposal.id]?.dateSuggestion?.trim() ||
+                                proposalCardDrafts[proposal.id]?.startDateSuggestion?.trim() ||
+                                proposalCardDrafts[proposal.id]?.endDateSuggestion?.trim() ||
                                 proposalCardDrafts[proposal.id]?.timeSuggestion?.trim() ||
                                 proposalCardDrafts[proposal.id]?.placeSuggestion?.trim()
                               )

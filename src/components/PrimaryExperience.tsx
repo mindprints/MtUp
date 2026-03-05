@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { AppView } from './AppView';
 import { AiAssistantPanel } from './AiAssistantPanel';
 import { ProposeScreen } from './ProposeScreen';
+import { ResolverScreen } from './ResolverScreen';
 import { AdminDashboard } from './AdminDashboard';
 import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
 import { runtimeConfig } from '@/lib/runtimeConfig';
 
-type ExperienceTab = 'activities' | 'propose' | 'admin' | 'workspace';
+type ExperienceTab = 'activities' | 'propose' | 'resolver' | 'admin' | 'workspace';
 const EXPERIENCE_TAB_STORAGE_KEY = 'mtup-primary-tab';
 
 function readInitialTab(aiEnabled: boolean): ExperienceTab {
@@ -18,7 +19,7 @@ function readInitialTab(aiEnabled: boolean): ExperienceTab {
   if (stored === 'workspace') {
     return aiEnabled ? 'activities' : 'workspace';
   }
-  if (stored === 'activities' || stored === 'propose' || stored === 'admin') {
+  if (stored === 'activities' || stored === 'propose' || stored === 'resolver' || stored === 'admin') {
     if (stored === 'activities' && !aiEnabled) return 'workspace';
     if (stored === 'propose' && !aiEnabled) return 'workspace';
     return stored;
@@ -59,6 +60,17 @@ export function PrimaryExperience() {
             )}
             <button
               type="button"
+              onClick={() => setActiveTab('resolver')}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+                activeTab === 'resolver'
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              Resolver
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('propose')}
               className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
             >
@@ -89,6 +101,10 @@ export function PrimaryExperience() {
         />
       ) : activeTab === 'admin' ? (
         <AdminDashboard onGoActivities={() => setActiveTab('activities')} />
+      ) : activeTab === 'resolver' ? (
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white p-2 dark:bg-slate-900 dark:border dark:border-slate-800">
+          <ResolverScreen />
+        </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <AppView />
