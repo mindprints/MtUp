@@ -128,6 +128,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     type: 'event' | 'sejour';
     emoji: string;
     created_by: string;
+    authored_by: string | null;
     created_at: string;
     status: 'proposed' | 'scheduled' | 'confirmed';
     specifics_json: Proposal['specifics'] | null;
@@ -296,7 +297,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       const { data: proposalData, error: proposalError } = await supabase
         .from('proposals')
         .select(
-          'id, group_id, title, type, emoji, created_by, created_at, status, specifics_json'
+          'id, group_id, title, type, emoji, created_by, authored_by, created_at, status, specifics_json'
         )
         .eq('group_id', resolvedGroupId)
         .order('created_at', { ascending: true });
@@ -314,6 +315,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
           type: row.type,
           emoji: row.emoji,
           createdBy: row.created_by,
+          authoredBy: row.authored_by || row.created_by,
           createdAt: row.created_at,
           status: row.status,
           specifics: row.specifics_json || undefined,
@@ -358,6 +360,11 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const addProposal = (proposal: Proposal) => {
+    const normalizedProposal: Proposal = {
+      ...proposal,
+      authoredBy: proposal.authoredBy || proposal.createdBy,
+    };
+
     if (isSupabaseMode() && user) {
       void (async () => {
         const supabase = getSupabaseClient();
@@ -385,14 +392,17 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
         }
 
         const { error } = await supabase.from('proposals').insert({
-          id: proposal.id,
+          id: normalizedProposal.id,
           group_id: targetGroupId,
-          title: proposal.title,
-          type: proposal.type,
-          emoji: proposal.emoji,
-          created_by: user.id,
-          status: proposal.status,
-          specifics_json: proposal.specifics || null,
+          title: normalizedProposal.title,
+          type: normalizedProposal.type,
+          emoji: normalizedProposal.emoji,
+          created_by:
+            normalizedProposal.createdBy === user.id ? normalizedProposal.createdBy : user.id,
+          authored_by: normalizedProposal.authoredBy,
+          created_at: normalizedProposal.createdAt,
+          status: normalizedProposal.status,
+          specifics_json: normalizedProposal.specifics || null,
         });
         if (error) {
           console.error('Failed to create proposal:', error);
@@ -403,7 +413,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
           setActiveGroupIdState(targetGroupId);
         }
         ensureProposerAvailabilityForEventDate({
-          proposal,
+          proposal: normalizedProposal,
           groupId: targetGroupId,
         });
         refresh();
@@ -411,8 +421,8 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    storage.addProposal(proposal);
-    ensureProposerAvailabilityForEventDate({ proposal });
+    storage.addProposal(normalizedProposal);
+    ensureProposerAvailabilityForEventDate({ proposal: normalizedProposal });
     refresh();
   };
 

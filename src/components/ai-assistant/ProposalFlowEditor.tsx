@@ -1,6 +1,10 @@
 import React from 'react';
 import type { Proposal } from '@/types';
-import { ProposalFlowEditDraft, buildProposalFlowEditDraft, parseDateRangeFromText } from '@/components/AiAssistantPanel';
+import {
+    ProposalFlowEditDraft,
+    buildProposalFlowEditDraft,
+    parseDateRangeFromText,
+} from '@/components/ai-assistant/shared';
 import { ProposalCommentsSection } from './ProposalCommentsSection';
 import { proposalThreadStore } from '@/lib/proposalThreadStore';
 

@@ -6,6 +6,7 @@
 - `docs/supabase/003_seed_second_group_isolation.sql`
 - `docs/supabase/004_rls_isolation_verification.sql`
 - `docs/supabase/005_rls_hotfix_group_memberships_recursion.sql`
+- `docs/supabase/006_proposal_authorship_split.sql`
 
 ## Usage
 1. Create a Supabase project.
@@ -17,6 +18,7 @@
 7. Run seed file 003 to create a second group for isolation testing.
 8. Run file 004 as different users to validate RLS visibility boundaries.
 9. If you see `stack depth limit exceeded (54001)` on `group_memberships`, run file 005.
+10. Run file 006 to split proposal authorship (`authored_by`) from row ownership (`created_by`) before using Resolver-created variants in Supabase mode.
 
 ## Notes
 - Schema is intentionally group-aware even while UI remains single-group.
@@ -24,3 +26,4 @@
   - Supabase auth
   - proposals + availabilities migrated
   - decision entities still pending migration
+- File 006 is additive and backfills `authored_by = created_by` for existing proposal rows.

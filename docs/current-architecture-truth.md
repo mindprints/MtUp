@@ -16,8 +16,11 @@ If another document conflicts with this file, treat this file as authoritative.
 - `orchestrator_base_url`: configurable (`VITE_ORCHESTRATOR_BASE_URL`), default `http://localhost:8787`.
 - Auth implementation: Supabase-backed via `src/lib/AuthContext.tsx`.
 - Data path status:
-  - `proposals`: Supabase-backed in `src/lib/ProposalContext.tsx`
-  - `availabilities`: Supabase-backed in `src/lib/ProposalContext.tsx`
+- `proposals`: Supabase-backed in `src/lib/ProposalContext.tsx`
+  - proposal ownership vs authorship:
+    - `created_by`: authenticated row creator / permission owner
+    - `authored_by`: display/provenance author (used for Resolver variants)
+- `availabilities`: Supabase-backed in `src/lib/ProposalContext.tsx`
   - `decision_*`: still local-backed during migration
 
 ## AI Runtime (Current)

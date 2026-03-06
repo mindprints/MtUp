@@ -97,6 +97,7 @@ export function ResolverScreen() {
       />
       <ResolverWorkspace
         proposal={selectedProposal}
+        proposals={proposals}
         currentUser={user}
         availabilities={availabilities}
         userNameById={userNameById}

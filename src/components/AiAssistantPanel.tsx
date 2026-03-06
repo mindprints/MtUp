@@ -7,7 +7,6 @@ import { proposalThumbnailStore } from '@/lib/proposalThumbnailStore';
 import {
   canGenerateProposalThumbnail,
   generateProposalThumbnail,
-  getThumbnailGeneratorDebugState,
 } from '@/lib/thumbnailGenerator';
 import { useProposals } from '@/lib/ProposalContext';
 import { generateId } from '@/lib/utils';
@@ -15,9 +14,17 @@ import type { AiActionProposal, AiMessage, Availability, MemoryRecord, Proposal 
 import { AiProposalFormCard, type AiProposalFormValues } from '@/components/AiProposalFormCard';
 import { MemoryExplorer } from '@/components/ai-assistant/MemoryExplorer';
 import { CalendarModal, type CalendarPopupState } from '@/components/ai-assistant/CalendarModal';
-import { SuggestAlternativesModal } from '@/components/ai-assistant/SuggestAlternativesModal';
-import { ProposalCommentsSection } from '@/components/ai-assistant/ProposalCommentsSection';
 import { ProposalFlowEditor } from '@/components/ai-assistant/ProposalFlowEditor';
+import { ProposalCard } from '@/components/ai-assistant/ProposalCard';
+import {
+  ProposalCardDrafts,
+  ProposalFlowEditDraft,
+  parseIsoDatesFromText,
+  parseDateRangeFromText,
+  formatDateRangeText,
+  formatTo24HourTimeText,
+  buildProposalFlowEditDraft,
+} from '@/components/ai-assistant/shared';
 
 type AiAssistantPanelProps = {
   userId: string;
@@ -28,35 +35,7 @@ type AiAssistantPanelProps = {
   onProposalFlowGoActivities?: () => void;
 };
 
-
-export type ProposalCardDrafts = Record<
-  string,
-  {
-    dateSuggestion: string;
-    startDateSuggestion: string;
-    endDateSuggestion: string;
-    timeSuggestion: string;
-    placeSuggestion: string;
-    isSuggestModalOpen?: boolean;
-  }
->;
-
 const EXPECTED_GROUP_MEMBER_NAMES = ['Alice', 'Bob', 'Charlie', 'Denise', 'Eve'] as const;
-
-
-
-type ParsedDateRange = {
-  startDate: string;
-  endDate: string;
-};
-
-export type ProposalFlowEditDraft = {
-  title: string;
-  startDate: string;
-  endDate: string;
-  time: string;
-  place: string;
-};
 
 type ProposalFlowAlternativeDraft = {
   startDate: string;
@@ -74,72 +53,6 @@ type PendingAlternativeSuggestion = {
 
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
-export function parseIsoDatesFromText(input: string): string[] {
-  const trimmed = input.trim();
-  if (!trimmed) return [];
-  const rangeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})$/i);
-  if (rangeMatch) {
-    const start = new Date(`${rangeMatch[1]}T00:00:00Z`);
-    const end = new Date(`${rangeMatch[2]}T00:00:00Z`);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
-    const out: string[] = [];
-    const cursor = new Date(start);
-    while (cursor <= end && out.length < 62) {
-      out.push(cursor.toISOString().slice(0, 10));
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-    return out;
-  }
-  const dates = trimmed.match(/\d{4}-\d{2}-\d{2}/g);
-  return dates ? Array.from(new Set(dates)) : [];
-}
-
-export function parseDateRangeFromText(input: string): ParsedDateRange {
-  const dates = parseIsoDatesFromText(input);
-  if (dates.length === 0) {
-    return { startDate: '', endDate: '' };
-  }
-  return {
-    startDate: dates[0] || '',
-    endDate: dates[dates.length - 1] || '',
-  };
-}
-
-export function formatDateRangeText(startDate: string | null | undefined, endDate: string | null | undefined): string {
-  if (!startDate && !endDate) return '';
-  const normalizedStart = startDate || endDate;
-  const normalizedEnd = endDate || startDate;
-  if (!normalizedStart) return '';
-  return normalizedStart === normalizedEnd
-    ? normalizedStart
-    : `${normalizedStart} to ${normalizedEnd}`;
-}
-
-
-
-export function formatTo24HourTimeText(input: string): string {
-  if (!input.trim()) return input;
-  return input.replace(/\b(\d{1,2})(?::(\d{2}))?\s*([ap])(?:\.?m\.?)?\b/gi, (_, h, m, meridiem) => {
-    const rawHour = Number(h);
-    if (Number.isNaN(rawHour) || rawHour < 1 || rawHour > 12) return _;
-    const minute = typeof m === 'string' ? m : '00';
-    const normalizedHour =
-      meridiem.toLowerCase() === 'p' ? (rawHour % 12) + 12 : rawHour % 12;
-    return `${String(normalizedHour).padStart(2, '0')}:${minute}`;
-  });
-}
-
-
-
-export function formatProposalBaseline(proposal: Proposal): string {
-  const parts = [
-    proposal.specifics?.date ? `Date: ${proposal.specifics.date}` : null,
-    proposal.specifics?.time ? `Time: ${proposal.specifics.time}` : null,
-    proposal.specifics?.location ? `Place: ${proposal.specifics.location}` : null,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' | ') : 'No logistics set yet';
 }
 
 function parseFirstTime24h(input: string): { hour: number; minute: number } | null {
@@ -166,79 +79,6 @@ function escapeIcsText(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 }
 
-export function proposalCardTheme(index: number) {
-  const themes = [
-    {
-      shell:
-        'border-rose-200 bg-rose-50/80 dark:border-rose-900/40 dark:bg-rose-950/10',
-      tile:
-        'border-rose-200 bg-white text-rose-800 dark:border-rose-900/40 dark:bg-slate-900 dark:text-rose-200',
-      accent: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200',
-    },
-    {
-      shell:
-        'border-sky-200 bg-sky-50/80 dark:border-sky-900/40 dark:bg-sky-950/10',
-      tile:
-        'border-sky-200 bg-white text-sky-800 dark:border-sky-900/40 dark:bg-slate-900 dark:text-sky-200',
-      accent: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-200',
-    },
-    {
-      shell:
-        'border-amber-200 bg-amber-50/80 dark:border-amber-900/40 dark:bg-amber-950/10',
-      tile:
-        'border-amber-200 bg-white text-amber-800 dark:border-amber-900/40 dark:bg-slate-900 dark:text-amber-200',
-      accent: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
-    },
-    {
-      shell:
-        'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-950/10',
-      tile:
-        'border-emerald-200 bg-white text-emerald-800 dark:border-emerald-900/40 dark:bg-slate-900 dark:text-emerald-200',
-      accent: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
-    },
-  ] as const;
-  return themes[index % themes.length];
-}
-
-export function ProposalFlag({
-  label,
-  tone = 'neutral',
-}: {
-  label: string;
-  tone?: 'neutral' | 'good' | 'warm' | 'info';
-}) {
-  const toneClass =
-    tone === 'good'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200'
-      : tone === 'warm'
-        ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200'
-        : tone === 'info'
-          ? 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200'
-          : 'border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
-  return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] ${toneClass}`}>{label}</span>
-  );
-}
-
-export function userInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  return parts
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() || '')
-    .join('');
-}
-
-export function buildProposalFlowEditDraft(proposal: Proposal): ProposalFlowEditDraft {
-  const parsedRange = parseDateRangeFromText(proposal.specifics?.date || '');
-  return {
-    title: proposal.title || '',
-    startDate: parsedRange.startDate,
-    endDate: parsedRange.endDate,
-    time: proposal.specifics?.time || '',
-    place: proposal.specifics?.location || '',
-  };
-}
 
 function summarizeMemoryRecord(record: MemoryRecord): string {
   const availabilityLabel =
@@ -549,18 +389,20 @@ export function AiAssistantPanel({
           ]
           : []),
       ];
-      const createdProposal: Proposal = {
-        id: createdProposalId,
-        title: formValues.title.trim(),
-        type: draft.type,
-        emoji: draft.emoji || '🎉',
-        createdBy: userId,
-        createdAt,
-        status: 'proposed',
-        specifics: {
+        const createdProposal: Proposal = {
+          id: createdProposalId,
+          title: formValues.title.trim(),
+          type: draft.type,
+          emoji: draft.emoji || '🎉',
+          createdBy: userId,
+          authoredBy: userId,
+          createdAt,
+          status: 'proposed',
+          specifics: {
           ...(dateValue ? { date: dateValue } : {}),
           ...(timeValue ? { time: timeValue } : {}),
           ...(placeValue ? { location: placeValue } : {}),
+          ...(requirementsValue ? { requirements: requirementsValue } : {}),
         },
         ...(createdComments.length > 0 ? { comments: createdComments } : {}),
       };
@@ -738,6 +580,25 @@ export function AiAssistantPanel({
         timeSuggestion: prev[proposalId]?.timeSuggestion || '',
         placeSuggestion: prev[proposalId]?.placeSuggestion || '',
         isSuggestModalOpen: false,
+      },
+    }));
+  };
+
+  const updateProposalCardDraft = (
+    proposalId: string,
+    updates: Partial<ProposalCardDrafts[string]>
+  ) => {
+    setProposalCardDrafts((prev) => ({
+      ...prev,
+      [proposalId]: {
+        ...(prev[proposalId] || {
+          dateSuggestion: '',
+          startDateSuggestion: '',
+          endDateSuggestion: '',
+          timeSuggestion: '',
+          placeSuggestion: '',
+        }),
+        ...updates,
       },
     }));
   };
@@ -1097,7 +958,6 @@ export function AiAssistantPanel({
     if (bFirstDate) return 1;
     return b.createdAt.localeCompare(a.createdAt);
   });
-  const thumbnailDebug = getThumbnailGeneratorDebugState();
   const cardDeckMode = !compact;
   const displayGroupUsers =
     groupUsers.length > 0
@@ -1734,313 +1594,38 @@ export function AiAssistantPanel({
           </div>
         ) : (
           <div className="hide-scrollbar min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto">
-            {sortedProposals.map((proposal, index) => {
-              const theme = proposalCardTheme(index);
-              const contributions = proposalThreadStore.listForProposal(proposal.id);
-              const proposalAvailabilities = getProposalAvailabilities(proposal.id);
-              const userNames = new Map(displayGroupUsers.map((u) => [u.id, u.name]));
-              const fieldChanges = contributions.filter((c) => c.kind === 'field_change');
-              const dateChanges = fieldChanges.filter((c) => c.field === 'date');
-              const timeChanges = fieldChanges.filter((c) => c.field === 'time');
-              const placeChanges = fieldChanges.filter((c) => c.field === 'place');
-              const participantRows = displayGroupUsers.map((member) => {
-                const memberContributions = contributions.filter((c) => c.userId === member.id);
-                const hasAffirmation = memberContributions.some((c) => c.kind === 'affirmation');
-                const hasDateDelta = memberContributions.some(
-                  (c) => c.kind === 'field_change' && c.field === 'date'
-                );
-                const availability = proposalAvailabilities.find((a) => a.userId === member.id);
-                return {
-                  member,
-                  hasAffirmation,
-                  hasDateDelta,
-                  availabilityDateCount: availability?.dates.length || 0,
-                };
-              });
-              const myHasExplicitAffirmation = proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
-              const shouldShowAffirmButton = !myHasExplicitAffirmation;
-              const subscribedCount = participantRows.filter((row) => row.hasAffirmation).length;
-              const proposalCreatorName = userNames.get(proposal.createdBy) || 'Unknown';
-              const thumbnailUrl = proposalThumbnailUrls[proposal.id];
-              const proposerNote =
-                proposal.comments
-                  ?.filter((comment) => comment.userId === proposal.createdBy)
-                  .slice(-1)[0]
-                  ?.text?.trim() || 'No proposer notes yet.';
-              const requirementsNote =
-                proposal.comments
-                  ?.find((comment) => /requirement|require|need/i.test(comment.text))
-                  ?.text?.trim() || 'No requirements listed.';
-              const displayDateChanges = [...dateChanges];
-              const displayTimeChanges = [...timeChanges];
-              const displayPlaceChanges = [...placeChanges];
-              const baselineDateText = proposal.specifics?.date || '';
-              const originalCalendarDates = parseIsoDatesFromText(baselineDateText);
-              const alternativeCalendarDates = Array.from(
-                new Set(
-                  displayDateChanges.flatMap((change) => {
-                    if (typeof change.value.dateText === 'string') {
-                      return parseIsoDatesFromText(String(change.value.dateText));
-                    }
-                    if (typeof change.value.text === 'string') {
-                      return parseIsoDatesFromText(String(change.value.text));
-                    }
-                    return [];
-                  })
-                )
-              );
-
-              return (
-                <div
-                  key={`${proposal.id}-${proposalFeedRefreshTick}`}
-                  className={`h-full min-h-full snap-start overflow-hidden rounded-[1rem] border-2 shadow ${theme.shell} flex flex-col`}
-                >
-                  <div className="relative">
-                    <div className="aspect-[16/7] w-full overflow-hidden bg-white/40 dark:bg-slate-900/40">
-                      {thumbnailUrl ? (
-                        <img
-                          src={thumbnailUrl}
-                          alt={`${proposal.title} thumbnail`}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className={`flex h-full w-full items-center justify-center text-6xl ${theme.tile}`}
-                          title="Thumbnail placeholder (can be replaced with image)"
-                        >
-                          <span aria-hidden="true">{proposal.emoji}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 p-2.5">
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-base font-semibold text-white drop-shadow-sm">
-                            {proposal.title}
-                          </p>
-                          <p className="mt-0.5 text-xs text-white/85">
-                            by {proposalCreatorName}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-1 flex-col p-2.5">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs font-medium text-gray-700 dark:text-slate-200">
-                        Subscribed {subscribedCount}/{participantRows.length}
-                      </span>
-                      {participantRows.map((row) => (
-                        <span
-                          key={`avatar-${row.member.id}`}
-                          title={`${row.member.name}: ${row.hasAffirmation ? 'subscribed' : 'not subscribed'
-                            }`}
-                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${row.hasAffirmation
-                            ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-                            }`}
-                        >
-                          {userInitials(row.member.name)}
-                          {row.hasAffirmation && (
-                            <span className="absolute -right-1 -top-1 rounded-full bg-emerald-800 px-1 text-[8px] leading-3 text-white">
-                              IN
-                            </span>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="mt-2 space-y-2.5 rounded-lg border border-white/70 bg-white/70 p-2.5 text-sm leading-6 text-gray-800 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200">
-                      <div className="grid grid-cols-1 gap-2">
-                        <div className="space-y-1">
-                          <div>
-                            <span className="font-semibold">Date:</span>{' '}
-                            {baselineDateText || 'Not set'}
-                          </div>
-                          {displayDateChanges.length > 0 && (
-                            <div className="space-y-1 pl-2">
-                              {displayDateChanges.map((change) => {
-                                const optionId = `date-${change.id}`;
-                                return (
-                                  <label key={`date-${change.id}`} className="flex items-start gap-2 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
-                                      onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                    />
-                                    <span>
-                                      <span className="font-medium">
-                                        {userInitials(userNames.get(change.userId) || '?')}:
-                                      </span>{' '}
-                                      {typeof change.value.dateText === 'string'
-                                        ? String(change.value.dateText)
-                                        : typeof change.value.text === 'string'
-                                          ? String(change.value.text)
-                                          : 'unspecified'}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <div>
-                            <span className="font-semibold">Time:</span>{' '}
-                            {formatTo24HourTimeText(proposal.specifics?.time || 'Not set')}
-                          </div>
-                          {displayTimeChanges.length > 0 && (
-                            <div className="space-y-1 pl-2">
-                              {displayTimeChanges.map((change) => {
-                                const optionId = `time-${change.id}`;
-                                return (
-                                  <label key={`time-${change.id}`} className="flex items-start gap-2 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
-                                      onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                    />
-                                    <span>
-                                      <span className="font-medium">
-                                        {userInitials(userNames.get(change.userId) || '?')}:
-                                      </span>{' '}
-                                      {typeof change.value.text === 'string'
-                                        ? formatTo24HourTimeText(String(change.value.text))
-                                        : 'unspecified'}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <div>
-                            <span className="font-semibold">Place:</span>{' '}
-                            {proposal.specifics?.location || 'Not set'}
-                          </div>
-                          {displayPlaceChanges.length > 0 && (
-                            <div className="space-y-1 pl-2">
-                              {displayPlaceChanges.map((change) => {
-                                const optionId = `place-${change.id}`;
-                                return (
-                                  <label key={`place-${change.id}`} className="flex items-start gap-2 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedAlternativeIdsByProposal[proposal.id]?.[optionId])}
-                                      onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                    />
-                                    <span>
-                                      <span className="font-medium">
-                                        {userInitials(userNames.get(change.userId) || '?')}:
-                                      </span>{' '}
-                                      {typeof change.value.text === 'string'
-                                        ? String(change.value.text)
-                                        : 'unspecified'}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="font-semibold">Proposer notes:</span> {proposerNote}
-                      </div>
-                      <div>
-                        <span className="font-semibold">Requirements:</span> {requirementsNote}
-                      </div>
-                      <ProposalCommentsSection
-                        proposal={proposal}
-                        userNameById={userNameById}
-                        commentDraftByProposalId={commentDraftByProposalId}
-                        setCommentDraftByProposalId={setCommentDraftByProposalId}
-                        handleAddProposalComment={handleAddProposalComment}
-                        theme="gray"
-                        containerClassName="mt-4"
-                      />
-                      {displayDateChanges.length === 0 &&
-                        displayTimeChanges.length === 0 &&
-                        displayPlaceChanges.length === 0 && (
-                          <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
-                            No alternatives suggested yet.
-                          </p>
-                        )}
-                    </div>
-
-                    {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
-                      <SuggestAlternativesModal
-                        proposal={proposal}
-                        draft={proposalCardDrafts[proposal.id]}
-                        onDraftChange={(updates) =>
-                          setProposalCardDrafts((prev) => ({
-                            ...prev,
-                            [proposal.id]: {
-                              ...(prev[proposal.id] || {
-                                dateSuggestion: '',
-                                startDateSuggestion: '',
-                                endDateSuggestion: '',
-                                timeSuggestion: '',
-                                placeSuggestion: '',
-                              }),
-                              ...updates,
-                            },
-                          }))
-                        }
-                        onSubmit={handleSubmitAlternatives}
-                        onClose={closeSuggestAlternativesModal}
-                      />
-                    )}
-
-                    <div className="mt-auto pt-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {shouldShowAffirmButton && (
-                          <button
-                            type="button"
-                            onClick={() => handleAffirmAvailabilityAsProposed(proposal)}
-                            className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                          >
-                            I&apos;m available as proposed
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openCalendarPopup(
-                              proposal,
-                              originalCalendarDates,
-                              alternativeCalendarDates
-                            )
-                          }
-                          className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        >
-                          Calendar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddToCalendar(proposal)}
-                          className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        >
-                          To My Calendar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openSuggestAlternativesModal(proposal.id)}
-                          className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        >
-                          Suggest Alternatives
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {sortedProposals.map((proposal, index) => (
+              <ProposalCard
+                key={`${proposal.id}-${proposalFeedRefreshTick}`}
+                proposal={proposal}
+                index={index}
+                userId={userId}
+                compact={false}
+                displayGroupUsers={displayGroupUsers}
+                proposalFeedRefreshTick={proposalFeedRefreshTick}
+                proposalAvailabilities={getProposalAvailabilities(proposal.id)}
+                selectedAlternativeIds={selectedAlternativeIdsByProposal[proposal.id] || {}}
+                toggleAlternativeSelection={toggleAlternativeSelection}
+                proposalThumbnailUrl={proposalThumbnailUrls[proposal.id]}
+                thumbnailGenerating={Boolean(thumbnailGeneratingByProposalId[proposal.id])}
+                thumbnailError={thumbnailErrorByProposalId[proposal.id]}
+                handleGenerateProposalThumbnail={handleGenerateProposalThumbnail}
+                draft={proposalCardDrafts[proposal.id]}
+                setDraft={(updates) => updateProposalCardDraft(proposal.id, updates)}
+                handleSubmitAlternatives={handleSubmitAlternatives}
+                closeSuggestAlternativesModal={closeSuggestAlternativesModal}
+                openSuggestAlternativesModal={openSuggestAlternativesModal}
+                handleAffirmAvailabilityAsProposed={handleAffirmAvailabilityAsProposed}
+                openCalendarPopup={openCalendarPopup}
+                handleAddToCalendar={handleAddToCalendar}
+                commentDraft={commentDraftByProposalId[proposal.id] || ''}
+                setCommentDraft={(draft) =>
+                  setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: draft }))
+                }
+                handleAddProposalComment={handleAddProposalComment}
+                userNameById={userNameById}
+              />
+            ))}
           </div>
         )}
         <CalendarModal
@@ -2064,258 +1649,38 @@ export function AiAssistantPanel({
           </p>
         ) : (
           <div className="snap-y snap-mandatory space-y-2 pr-0.5">
-            {sortedProposals.map((proposal, index) => {
-              const theme = proposalCardTheme(index);
-              const contributions = proposalThreadStore.listForProposal(proposal.id);
-              const proposalAvailabilities = getProposalAvailabilities(proposal.id);
-              const userNames = new Map(displayGroupUsers.map((u) => [u.id, u.name]));
-              const fieldChanges = contributions.filter((c) => c.kind === 'field_change');
-              const dateChanges = fieldChanges.filter((c) => c.field === 'date');
-              const timeChanges = fieldChanges.filter((c) => c.field === 'time');
-              const placeChanges = fieldChanges.filter((c) => c.field === 'place');
-              const participantRows = displayGroupUsers.map((member) => {
-                const memberContributions = contributions.filter((c) => c.userId === member.id);
-                const hasAffirmation = memberContributions.some((c) => c.kind === 'affirmation');
-                const hasDateDelta = memberContributions.some(
-                  (c) => c.kind === 'field_change' && c.field === 'date'
-                );
-                const availability = proposalAvailabilities.find((a) => a.userId === member.id);
-                return {
-                  member,
-                  hasAffirmation,
-                  hasDateDelta,
-                  availabilityDateCount: availability?.dates.length || 0,
-                };
-              });
-              const myHasExplicitAffirmation = proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
-              const shouldShowAffirmButton = !myHasExplicitAffirmation;
-              const subscribedCount = participantRows.filter((row) => row.hasAffirmation).length;
-              const proposalCreatorName = userNames.get(proposal.createdBy) || 'Unknown';
-              const thumbnailUrl = proposalThumbnailUrls[proposal.id];
-              const thumbnailBusy = Boolean(thumbnailGeneratingByProposalId[proposal.id]);
-              const thumbnailError = thumbnailErrorByProposalId[proposal.id];
-
-              return (
-                <div
-                  key={`${proposal.id}-${proposalFeedRefreshTick}`}
-                  className={`snap-start overflow-hidden rounded-[1rem] border shadow-sm ${theme.shell} flex min-h-[70vh] flex-col`}
-                >
-                  <div className="relative">
-                    <div className="aspect-[16/7] w-full overflow-hidden bg-white/40 dark:bg-slate-900/40">
-                      {thumbnailUrl ? (
-                        <img
-                          src={thumbnailUrl}
-                          alt={`${proposal.title} thumbnail`}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className={`flex h-full w-full items-center justify-center text-6xl ${theme.tile}`}
-                          title="Thumbnail placeholder (can be replaced with image)"
-                        >
-                          <span aria-hidden="true">{proposal.emoji}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 p-2.5">
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-base font-semibold text-white drop-shadow-sm">
-                            {proposal.title}
-                          </p>
-                          <p className="mt-0.5 text-xs text-white/85">
-                            by {proposalCreatorName}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-1 flex-col p-2.5">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] font-medium text-gray-700 dark:text-slate-200">
-                        Subscribed {subscribedCount}/{participantRows.length}
-                      </span>
-                      {participantRows.map((row) => (
-                        <span
-                          key={`avatar-${row.member.id}`}
-                          title={`${row.member.name}: ${row.hasAffirmation ? 'subscribed' : 'not subscribed'
-                            }`}
-                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${row.hasAffirmation
-                            ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-                            }`}
-                        >
-                          {userInitials(row.member.name)}
-                          {row.hasAffirmation && (
-                            <span className="absolute -right-1 -top-1 rounded-full bg-emerald-800 px-1 text-[8px] leading-3 text-white">
-                              IN
-                            </span>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <ProposalFlag label="proposer auto-in" tone="good" />
-                      {dateChanges.length > 0 && (
-                        <ProposalFlag
-                          label={`${dateChanges.length} date idea${dateChanges.length > 1 ? 's' : ''}`}
-                          tone="warm"
-                        />
-                      )}
-                      {timeChanges.length > 0 && (
-                        <ProposalFlag
-                          label={`${timeChanges.length} time idea${timeChanges.length > 1 ? 's' : ''}`}
-                          tone="info"
-                        />
-                      )}
-                      {placeChanges.length > 0 && (
-                        <ProposalFlag
-                          label={`${placeChanges.length} place idea${placeChanges.length > 1 ? 's' : ''}`}
-                          tone="info"
-                        />
-                      )}
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {shouldShowAffirmButton ? (
-                        <button
-                          type="button"
-                          onClick={() => handleAffirmAvailabilityAsProposed(proposal)}
-                          className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                        >
-                          I&apos;m available as proposed
-                        </button>
-                      ) : (
-                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
-                          You&apos;re in
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => openSuggestAlternativesModal(proposal.id)}
-                        className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        Suggest Alternatives
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleGenerateProposalThumbnail(proposal)}
-                        disabled={!canGenerateProposalThumbnail() || thumbnailBusy}
-                        className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        title={
-                          canGenerateProposalThumbnail()
-                            ? 'Generate thumbnail image'
-                            : 'Set VITE_THUMBNAIL_OPENROUTER_API_KEY (or VITE_OPENROUTER_API_KEY) to enable thumbnail generation'
-                        }
-                      >
-                        {thumbnailBusy ? 'Generating thumbnail...' : 'Generate Thumbnail'}
-                      </button>
-                    </div>
-                    {thumbnailError && (
-                      <p className="mt-2 text-[11px] text-red-700 dark:text-red-300">{thumbnailError}</p>
-                    )}
-                    {!canGenerateProposalThumbnail() && (
-                      <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
-                        Thumbnail config: provider={thumbnailDebug.provider}, apiKey=
-                        {thumbnailDebug.hasApiKey ? 'yes' : 'no'}, model=
-                        {thumbnailDebug.hasModel ? 'yes' : 'no'}
-                      </p>
-                    )}
-
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <details className="group rounded-full">
-                        <summary className={`cursor-pointer list-none rounded-full border px-2.5 py-1 text-[11px] ${theme.accent}`}>
-                          Plan
-                        </summary>
-                        <div className="mt-2 rounded-xl border border-white/70 bg-white/80 px-2.5 py-2 text-xs text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200">
-                          {formatProposalBaseline(proposal)}
-                        </div>
-                      </details>
-
-                      <details className="group rounded-full">
-                        <summary className="cursor-pointer list-none rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                          Crew
-                        </summary>
-                        <div className="mt-2 flex flex-wrap gap-1.5 rounded-xl border border-white/70 bg-white/80 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                          {participantRows.map((row) => (
-                            <span
-                              key={row.member.id}
-                              className={`rounded-full border px-2 py-1 text-[11px] ${row.member.id === userId
-                                ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200'
-                                : 'border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
-                                }`}
-                            >
-                              {row.member.name}
-                              {row.hasDateDelta
-                                ? ' • date idea'
-                                : row.hasAffirmation
-                                  ? ' • in'
-                                  : ' • waiting'}
-                            </span>
-                          ))}
-                        </div>
-                      </details>
-
-                      <details className="group rounded-full">
-                        <summary className="cursor-pointer list-none rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                          Changes
-                        </summary>
-                        <div className="mt-2 space-y-1.5 rounded-xl border border-white/70 bg-white/80 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                          {fieldChanges.length === 0 ? (
-                            <p className="text-xs text-gray-600 dark:text-slate-300">No alternatives yet.</p>
-                          ) : (
-                            fieldChanges
-                              .slice()
-                              .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-                              .map((change) => (
-                                <div
-                                  key={change.id}
-                                  className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200"
-                                >
-                                  <span className="font-medium">{userNames.get(change.userId) || 'Someone'}</span>{' '}
-                                  <span className="uppercase text-[10px] opacity-80">{change.field || 'change'}</span>{' '}
-                                  {typeof change.value.dateText === 'string'
-                                    ? String(change.value.dateText)
-                                    : typeof change.value.text === 'string'
-                                      ? String(change.value.text)
-                                      : 'unspecified'}
-                                </div>
-                              ))
-                          )}
-                        </div>
-                      </details>
-                    </div>
-
-                    {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
-                      <SuggestAlternativesModal
-                        proposal={proposal}
-                        draft={proposalCardDrafts[proposal.id]}
-                        onDraftChange={(updates) =>
-                          setProposalCardDrafts((prev) => ({
-                            ...prev,
-                            [proposal.id]: {
-                              ...(prev[proposal.id] || {
-                                dateSuggestion: '',
-                                startDateSuggestion: '',
-                                endDateSuggestion: '',
-                                timeSuggestion: '',
-                                placeSuggestion: '',
-                              }),
-                              ...updates,
-                            },
-                          }))
-                        }
-                        onSubmit={handleSubmitAlternatives}
-                        onClose={closeSuggestAlternativesModal}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {sortedProposals.map((proposal, index) => (
+              <ProposalCard
+                key={`${proposal.id}-${proposalFeedRefreshTick}`}
+                proposal={proposal}
+                index={index}
+                userId={userId}
+                compact
+                displayGroupUsers={displayGroupUsers}
+                proposalFeedRefreshTick={proposalFeedRefreshTick}
+                proposalAvailabilities={getProposalAvailabilities(proposal.id)}
+                selectedAlternativeIds={selectedAlternativeIdsByProposal[proposal.id] || {}}
+                toggleAlternativeSelection={toggleAlternativeSelection}
+                proposalThumbnailUrl={proposalThumbnailUrls[proposal.id]}
+                thumbnailGenerating={Boolean(thumbnailGeneratingByProposalId[proposal.id])}
+                thumbnailError={thumbnailErrorByProposalId[proposal.id]}
+                handleGenerateProposalThumbnail={handleGenerateProposalThumbnail}
+                draft={proposalCardDrafts[proposal.id]}
+                setDraft={(updates) => updateProposalCardDraft(proposal.id, updates)}
+                handleSubmitAlternatives={handleSubmitAlternatives}
+                closeSuggestAlternativesModal={closeSuggestAlternativesModal}
+                openSuggestAlternativesModal={openSuggestAlternativesModal}
+                handleAffirmAvailabilityAsProposed={handleAffirmAvailabilityAsProposed}
+                openCalendarPopup={openCalendarPopup}
+                handleAddToCalendar={handleAddToCalendar}
+                commentDraft={commentDraftByProposalId[proposal.id] || ''}
+                setCommentDraft={(draft) =>
+                  setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: draft }))
+                }
+                handleAddProposalComment={handleAddProposalComment}
+                userNameById={userNameById}
+              />
+            ))}
           </div>
         )}
       </div>

@@ -17,12 +17,24 @@ export type Proposal = {
   type: ActivityType;
   emoji: string;
   createdBy: string;
+  authoredBy?: string;
   createdAt: string;
   status: ActivityStatus;
   specifics?: {
     date?: string;
     time?: string;
     location?: string;
+    requirements?: string;
+    resolver?: {
+      variantOfProposalId?: string;
+      variantLabel?: string;
+      originalProposalTitle?: string;
+      originalProposalCreatedBy?: string;
+      forkedAt?: string;
+      forkedBy?: string;
+      chosenTimeLabel?: string;
+      chosenPlaceLabel?: string;
+    };
   };
   comments?: Comment[];
 };

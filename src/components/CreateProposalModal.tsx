@@ -47,6 +47,7 @@ export function CreateProposalModal({
       type,
       emoji,
       createdBy: user.id,
+      authoredBy: user.id,
       createdAt: new Date().toISOString(),
       status: 'proposed',
     };

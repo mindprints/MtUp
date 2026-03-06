@@ -82,10 +82,12 @@ export function ResolverQueue({
           <div className="space-y-2">
             {proposals.map((proposal) => {
               const isSelected = proposal.id === selectedProposalId;
+              const proposalAuthorId = proposal.authoredBy || proposal.createdBy;
               const creatorName =
-                proposal.createdBy === currentUserId
+                proposalAuthorId === currentUserId
                   ? 'Mine'
-                  : userNameById.get(proposal.createdBy) || 'Unknown';
+                  : userNameById.get(proposalAuthorId) || 'Unknown';
+              const variantLabel = proposal.specifics?.resolver?.variantLabel;
 
               return (
                 <button
@@ -111,6 +113,11 @@ export function ResolverQueue({
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                           {proposal.status}
                         </span>
+                        {variantLabel && (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
+                            {variantLabel}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

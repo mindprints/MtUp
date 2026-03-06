@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { DecisionOptionList } from '@/components/DecisionOptionList';
 import { useProposals } from '@/lib/ProposalContext';
 import { canConfirmDecision } from '@/lib/permissions';
-import { getDecisionSummary } from '@/lib/resolverUtils';
+import { getConsensusAssessment, getDecisionSummary } from '@/lib/resolverUtils';
 import { computeSejourOverlapWindows } from '@/lib/sejourUtils';
 import { storage } from '@/lib/storage';
+import { proposalThreadStore } from '@/lib/proposalThreadStore';
 import { generateId } from '@/lib/utils';
 import type {
   DecisionDimension,
@@ -31,6 +32,17 @@ const DIMENSION_LABELS: Record<DecisionDimension, string> = {
   place: 'Place',
   requirement: 'Requirements',
 };
+
+function normalizeOptionLabel(input: string): string {
+  return input.trim().replace(/\s+/g, ' ');
+}
+
+function splitRequirementText(input: string): string[] {
+  return input
+    .split(/\r?\n|[;,]/)
+    .map((part) => normalizeOptionLabel(part.replace(/^requirements?\s*:\s*/i, '')))
+    .filter(Boolean);
+}
 
 export function ResolverDecisionPanel({
   proposal,
@@ -66,12 +78,23 @@ export function ResolverDecisionPanel({
     .slice()
     .sort((a, b) => new Date(b.confirmedAt).getTime() - new Date(a.confirmedAt).getTime());
   const latestConfirmation = confirmations[0] || null;
+  const contributionEntries = useMemo(
+    () =>
+      proposalThreadStore
+        .listForProposal(proposal.id)
+        .filter((entry) => entry.kind === 'field_change'),
+    [proposal.id]
+  );
 
   const currentUserVote = useMemo(
     () => votes.find((vote) => vote.userId === currentUser.id) || null,
     [votes, currentUser.id]
   );
   const { topCandidates } = useMemo(() => getDecisionSummary(options, votes), [options, votes]);
+  const consensusState = useMemo(
+    () => getConsensusAssessment(options, votes, mode),
+    [mode, options, votes]
+  );
 
   useEffect(() => {
     const existing = getDecisionConfig(proposal.id, dimension);
@@ -84,6 +107,120 @@ export function ResolverDecisionPanel({
       });
     }
   }, [dimension, getDecisionConfig, proposal.id, setDecisionConfig]);
+
+  useEffect(() => {
+    const existingKeys = new Set(
+      options.map((option) => {
+        const startDate = option.metadata?.startDate;
+        const endDate = option.metadata?.endDate;
+        return startDate || endDate
+          ? `${dimension}|${normalizeOptionLabel(option.label)}|${startDate || ''}|${endDate || ''}`
+          : `${dimension}|${normalizeOptionLabel(option.label)}`;
+      })
+    );
+
+    const seeds: DecisionOption[] = [];
+    const pushSeed = (label: string, metadata?: Record<string, string>) => {
+      const normalizedLabel = normalizeOptionLabel(label);
+      if (!normalizedLabel) return;
+      const key = metadata?.startDate || metadata?.endDate
+        ? `${dimension}|${normalizedLabel}|${metadata?.startDate || ''}|${metadata?.endDate || ''}`
+        : `${dimension}|${normalizedLabel}`;
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      seeds.push({
+        id: generateId(),
+        proposalId: proposal.id,
+        dimension,
+        label: normalizedLabel,
+        createdBy: proposal.createdBy,
+        createdAt: proposal.createdAt,
+        ...(metadata ? { metadata } : {}),
+      });
+    };
+
+    if (dimension === 'time') {
+      if (proposal.type === 'sejour' && proposal.specifics?.date) {
+        const dateText = normalizeOptionLabel(proposal.specifics.date);
+        const rangeMatch = dateText.match(/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i);
+        pushSeed(dateText, rangeMatch ? {
+          startDate: rangeMatch[1],
+          endDate: rangeMatch[2] || rangeMatch[1],
+          source: 'proposal-baseline',
+        } : { source: 'proposal-baseline' });
+      }
+      if (proposal.specifics?.time) {
+        pushSeed(proposal.specifics.time, { source: 'proposal-baseline' });
+      }
+      contributionEntries.forEach((entry) => {
+        if (entry.field === 'time' && typeof entry.value.text === 'string') {
+          pushSeed(entry.value.text, { source: 'proposal-thread' });
+        }
+        if (
+          proposal.type === 'sejour' &&
+          entry.field === 'date' &&
+          (typeof entry.value.dateText === 'string' || typeof entry.value.text === 'string')
+        ) {
+          const dateText =
+            typeof entry.value.dateText === 'string'
+              ? entry.value.dateText
+              : String(entry.value.text);
+          const normalized = normalizeOptionLabel(dateText);
+          const rangeMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i);
+          pushSeed(normalized, rangeMatch ? {
+            startDate: rangeMatch[1],
+            endDate: rangeMatch[2] || rangeMatch[1],
+            source: 'proposal-thread',
+          } : { source: 'proposal-thread' });
+        }
+      });
+    }
+
+    if (dimension === 'place') {
+      if (proposal.specifics?.location) {
+        pushSeed(proposal.specifics.location, { source: 'proposal-baseline' });
+      }
+      contributionEntries.forEach((entry) => {
+        if (entry.field === 'place' && typeof entry.value.text === 'string') {
+          pushSeed(entry.value.text, { source: 'proposal-thread' });
+        }
+      });
+    }
+
+    if (dimension === 'requirement') {
+      splitRequirementText(proposal.specifics?.requirements || '').forEach((label) =>
+        pushSeed(label, { source: 'proposal-baseline' })
+      );
+      (proposal.comments || []).forEach((comment) => {
+        if (!/requirement|require|need/i.test(comment.text)) return;
+        splitRequirementText(comment.text).forEach((label) =>
+          pushSeed(label, { source: 'proposal-comments' })
+        );
+      });
+      contributionEntries.forEach((entry) => {
+        if (entry.field === 'requirements' && typeof entry.value.text === 'string') {
+          splitRequirementText(entry.value.text).forEach((label) =>
+            pushSeed(label, { source: 'proposal-thread' })
+          );
+        }
+      });
+    }
+
+    if (seeds.length > 0) {
+      seeds.forEach((seed) => addDecisionOption(seed));
+    }
+  }, [
+    addDecisionOption,
+    contributionEntries,
+    dimension,
+    options,
+    proposal.comments,
+    proposal.createdAt,
+    proposal.createdBy,
+    proposal.id,
+    proposal.specifics,
+    proposal.type,
+  ]);
 
   useEffect(() => {
     if (mode === 'multi') {
@@ -217,6 +354,10 @@ export function ResolverDecisionPanel({
       nextSpecifics.location = selectedOptions.map((option) => option.label).join(', ');
     }
 
+    if (dimension === 'requirement' && selectedOptions.length > 0) {
+      nextSpecifics.requirements = selectedOptions.map((option) => option.label).join(', ');
+    }
+
     const p = proposal as any;
     const requiredDimensions: string[] =
       p.requiredDimensions ||
@@ -299,6 +440,48 @@ export function ResolverDecisionPanel({
       </div>
 
       <div className="space-y-3">
+        <div
+          className={`rounded-md border p-3 ${
+            consensusState.tone === 'good'
+              ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20'
+              : consensusState.tone === 'info'
+                ? 'border-sky-200 bg-sky-50 dark:border-sky-900/40 dark:bg-sky-950/20'
+                : consensusState.tone === 'warm'
+                  ? 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20'
+                  : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                {consensusState.label}
+              </p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-slate-300">
+                {consensusState.detail}
+              </p>
+            </div>
+            <div className="min-w-[7rem]">
+              <div className="text-right text-[11px] font-medium text-gray-600 dark:text-slate-300">
+                {votes.length} vote{votes.length === 1 ? '' : 's'}
+              </div>
+              <div className="mt-1 h-2 rounded-full bg-gray-200 dark:bg-slate-700">
+                <div
+                  className={`h-2 rounded-full ${
+                    consensusState.tone === 'good'
+                      ? 'bg-emerald-500'
+                      : consensusState.tone === 'info'
+                        ? 'bg-sky-500'
+                        : consensusState.tone === 'warm'
+                          ? 'bg-amber-500'
+                          : 'bg-gray-400'
+                  }`}
+                  style={{ width: `${consensusState.supportPercent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-700 dark:text-slate-200">Voting mode:</label>
           <select
@@ -366,6 +549,7 @@ export function ResolverDecisionPanel({
           onMultiVoteToggle={handleMultiVoteToggle}
           onRankedMove={handleRankedMove}
           onDeleteOption={deleteDecisionOption}
+          highlightedOptionIds={consensusState.winners.map((option) => option.id)}
         />
 
         {mode !== 'multi' && options.length > 0 && (

@@ -12,6 +12,7 @@ type DecisionOptionListProps = {
   onMultiVoteToggle: (optionId: string) => void;
   onRankedMove: (optionId: string, direction: 'up' | 'down') => void;
   onDeleteOption: (optionId: string) => void;
+  highlightedOptionIds?: string[];
 };
 
 export function DecisionOptionList({
@@ -25,6 +26,7 @@ export function DecisionOptionList({
   onMultiVoteToggle,
   onRankedMove,
   onDeleteOption,
+  highlightedOptionIds = [],
 }: DecisionOptionListProps) {
   const getOptionSupport = (optionId: string) => {
     if (mode === 'multi') {
@@ -66,11 +68,16 @@ export function DecisionOptionList({
         const isMultiSelected = currentUserVote?.selectedOptionIds?.includes(option.id);
         const isInRankedVote = currentUserVote?.rankedOptionIds?.includes(option.id);
         const canDelete = option.createdBy === currentUserId || currentUserIsAdmin;
+        const isHighlighted = highlightedOptionIds.includes(option.id);
 
         return (
           <div
             key={option.id}
-            className="rounded-md border border-gray-200 dark:border-slate-700 p-2"
+            className={`rounded-md border p-2 ${
+              isHighlighted
+                ? 'border-emerald-300 bg-emerald-50/60 dark:border-emerald-800 dark:bg-emerald-950/20'
+                : 'border-gray-200 dark:border-slate-700'
+            }`}
           >
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -82,9 +89,16 @@ export function DecisionOptionList({
                   )}
                   {option.label}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {isHighlighted && (
+                    <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                      Leading
+                    </span>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
                   {support} vote{support === 1 ? '' : 's'} ({supportPercent}%)
-                </p>
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 {mode === 'single' && (

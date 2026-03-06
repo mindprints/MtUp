@@ -1,5 +1,5 @@
 import type { Proposal } from '@/types';
-import { ProposalCardDrafts, formatDateRangeText } from '@/components/AiAssistantPanel';
+import { ProposalCardDrafts, formatDateRangeText } from '@/components/ai-assistant/shared';
 
 type SuggestAlternativesModalProps = {
     proposal: Proposal;

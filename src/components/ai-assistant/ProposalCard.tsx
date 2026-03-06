@@ -14,14 +14,14 @@ import {
     parseIsoDatesFromText,
     formatTo24HourTimeText,
     formatProposalBaseline,
-} from '@/components/AiAssistantPanel';
+} from '@/components/ai-assistant/shared';
 
 export type ProposalCardProps = {
     proposal: Proposal;
     index: number;
     userId: string;
     compact: boolean;
-    displayGroupUsers: User[];
+    displayGroupUsers: Array<Pick<User, 'id' | 'name' | 'isAdmin'>>;
     proposalFeedRefreshTick: number;
     proposalAvailabilities: Availability[];
 
@@ -31,7 +31,7 @@ export type ProposalCardProps = {
     proposalThumbnailUrl: string | undefined;
     thumbnailGenerating: boolean;
     thumbnailError: string | undefined;
-    handleGenerateProposalThumbnail: (proposal: Proposal) => void;
+    handleGenerateProposalThumbnail: (proposal: Proposal) => void | Promise<void>;
 
     draft: ProposalCardDrafts[string] | undefined;
     setDraft: (updates: Partial<ProposalCardDrafts[string]>) => void;
@@ -107,14 +107,17 @@ export function ProposalCard({
     const myHasExplicitAffirmation = proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
     const shouldShowAffirmButton = !myHasExplicitAffirmation;
     const subscribedCount = participantRows.filter((row) => row.hasAffirmation).length;
-    const proposalCreatorName = userNames.get(proposal.createdBy) || 'Unknown';
+    const proposalAuthorId = proposal.authoredBy || proposal.createdBy;
+    const proposalCreatorName = userNames.get(proposalAuthorId) || 'Unknown';
+    const resolverMetadata = proposal.specifics?.resolver;
 
     const proposerNote =
         proposal.comments
-            ?.filter((comment) => comment.userId === proposal.createdBy)
+            ?.filter((comment) => comment.userId === proposalAuthorId)
             .slice(-1)[0]
             ?.text?.trim() || 'No proposer notes yet.';
     const requirementsNote =
+        proposal.specifics?.requirements ||
         proposal.comments
             ?.find((comment) => /requirement|require|need/i.test(comment.text))
             ?.text?.trim() || 'No requirements listed.';
@@ -174,7 +177,14 @@ export function ProposalCard({
                 <div className="flex items-end justify-between gap-3">
                     <div>
                         <p className="text-base font-semibold text-white drop-shadow-sm">{proposal.title}</p>
-                        <p className="mt-0.5 text-xs text-white/85">by {proposalCreatorName}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-white/85">
+                            <span>by {proposalCreatorName}</span>
+                            {resolverMetadata?.variantLabel && (
+                                <span className="rounded-full bg-sky-500/85 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+                                    {resolverMetadata.variantLabel}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -318,6 +328,14 @@ export function ProposalCard({
                         <div>
                             <span className="font-semibold">Requirements:</span> {requirementsNote}
                         </div>
+                        {resolverMetadata?.variantOfProposalId && (
+                            <div>
+                                <span className="font-semibold">Resolver fork:</span>{' '}
+                                from {resolverMetadata.originalProposalTitle || 'original proposal'}
+                                {resolverMetadata.chosenTimeLabel ? ` | Time: ${resolverMetadata.chosenTimeLabel}` : ''}
+                                {resolverMetadata.chosenPlaceLabel ? ` | Place: ${resolverMetadata.chosenPlaceLabel}` : ''}
+                            </div>
+                        )}
                         <ProposalCommentsSection
                             proposal={proposal}
                             userNameById={userNameById}
@@ -404,6 +422,9 @@ export function ProposalCard({
             <div className="flex flex-1 flex-col p-2.5">
                 {subscribedAvatars}
                 <div className="flex flex-wrap gap-1.5">
+                    {resolverMetadata?.variantLabel && (
+                        <ProposalFlag label={resolverMetadata.variantLabel} tone="info" />
+                    )}
                     <ProposalFlag label="proposer auto-in" tone="good" />
                     {dateChanges.length > 0 && (
                         <ProposalFlag
@@ -449,7 +470,7 @@ export function ProposalCard({
                     </button>
                     <button
                         type="button"
-                        onClick={() => handleGenerateProposalThumbnail(proposal)}
+                                    onClick={() => void handleGenerateProposalThumbnail(proposal)}
                         disabled={!canGenerateProposalThumbnail() || thumbnailBusy}
                         className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         title={
