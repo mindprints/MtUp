@@ -1,0 +1,2 @@
+src/components/ai-assistant/MemoryExplorer.tsx(21,58): error TS2339: Property 'dayOfWeek' does not exist on type '{}'.
+src/components/ai-assistant/MemoryExplorer.tsx(21,102): error TS2339: Property 'timeOfDay' does not exist on type '{}'.

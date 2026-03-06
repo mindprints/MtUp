@@ -59,10 +59,7 @@ export function ResolverDecisionPanel({
   const config = getDecisionConfig(proposal.id, dimension);
   const mode = config?.mode ?? getDefaultMode(dimension);
   const canConfirm = canConfirmDecision(currentUser, proposal);
-  const usersById = useMemo(
-    () => new Map(storage.getData().users.map((user) => [user.id, user])),
-    []
-  );
+  const usersById = new Map(storage.getData().users.map((user) => [user.id, user]));
   const options = getOptionsForProposalDimension(proposal.id, dimension);
   const votes = getVotesForProposalDimension(proposal.id, dimension);
   const confirmations = getDecisionConfirmations(proposal.id, dimension)
@@ -183,7 +180,7 @@ export function ResolverDecisionPanel({
     );
   };
 
-  const handleConfirmSelection = () => {
+  const handleConfirmSelection = async () => {
     if (confirmationOptionIds.length === 0) return;
 
     addDecisionConfirmation({
@@ -220,8 +217,16 @@ export function ResolverDecisionPanel({
       nextSpecifics.location = selectedOptions.map((option) => option.label).join(', ');
     }
 
-    updateProposal(proposal.id, {
-      status: 'confirmed',
+    const p = proposal as any;
+    const requiredDimensions: string[] =
+      p.requiredDimensions ||
+      p.dimensions ||
+      Object.keys(p.proposalSpecificRequirements || proposal.specifics || {});
+
+    const allRequiredDecided = requiredDimensions.every((d) => Boolean((nextSpecifics as any)[d]));
+
+    await updateProposal(proposal.id, {
+      status: allRequiredDecided ? 'confirmed' : proposal.status || 'pending',
       specifics: nextSpecifics,
     });
     setConfirmationNote('');
@@ -284,11 +289,10 @@ export function ResolverDecisionPanel({
           {DIMENSION_LABELS[dimension]}
         </h3>
         <span
-          className={`rounded-full px-2 py-0.5 text-[11px] ${
-            (config?.status ?? 'open') === 'confirmed'
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-              : 'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-300'
-          }`}
+          className={`rounded-full px-2 py-0.5 text-[11px] ${(config?.status ?? 'open') === 'confirmed'
+            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+            : 'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-300'
+            }`}
         >
           {(config?.status ?? 'open').replace('_', ' ')}
         </span>
@@ -440,7 +444,7 @@ export function ResolverDecisionPanel({
                   {latestConfirmation.confirmedBy === currentUser.id
                     ? 'Me'
                     : usersById.get(latestConfirmation.confirmedBy)?.name ||
-                      latestConfirmation.confirmedBy}
+                    latestConfirmation.confirmedBy}
                 </strong>{' '}
                 on {new Date(latestConfirmation.confirmedAt).toLocaleString()}.
               </p>

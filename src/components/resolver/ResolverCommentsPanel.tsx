@@ -23,6 +23,8 @@ export function ResolverCommentsPanel({
     setDraft('');
   };
 
+  const comments = proposal.comments || [];
+
   return (
     <section className="rounded-xl border border-gray-200 bg-stone-50 p-4 dark:border-slate-700 dark:bg-slate-950">
       <div className="mb-3">
@@ -33,10 +35,10 @@ export function ResolverCommentsPanel({
       </div>
 
       <div className="space-y-2">
-        {(proposal.comments || []).length === 0 ? (
+        {comments.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-slate-400">No comments yet.</p>
         ) : (
-          (proposal.comments || []).map((comment) => (
+          comments.map((comment) => (
             <div
               key={comment.id}
               className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"

@@ -18,7 +18,12 @@ import { generateId } from '@/lib/utils';
 type ProposalContextType = {
   groups: GroupSummary[];
   activeGroupId: string | null;
-  groupUsers: GroupSummaryUser[];
+  groupUsers: {
+    id: string;
+    name: string;
+    email?: string;
+    isAdmin: boolean;
+  }[];
   setActiveGroupId: (groupId: string | null) => void;
   proposals: Proposal[];
   availabilities: Availability[];
@@ -27,7 +32,7 @@ type ProposalContextType = {
   decisionVotes: DecisionVote[];
   decisionConfirmations: DecisionConfirmation[];
   addProposal: (proposal: Proposal) => void;
-  updateProposal: (proposalId: string, updates: Partial<Proposal>) => void;
+  updateProposal: (proposalId: string, updates: Partial<Proposal>) => Promise<void>;
   deleteProposal: (proposalId: string) => void;
   setAvailability: (availability: Availability) => void;
   getAvailability: (userId: string, proposalId: string) => Availability | null;
@@ -156,7 +161,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     setDecisionConfirmations(data.decisionConfirmations);
   }, []);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!isSupabaseMode()) {
       hydrateFromLocalStorage();
       return;
@@ -175,7 +180,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    void (async () => {
+    await (async () => {
       const supabase = getSupabaseClient();
       const { data: membershipData, error: membershipError } = await supabase
         .from('group_memberships')
@@ -411,9 +416,9 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
     refresh();
   };
 
-  const updateProposal = (proposalId: string, updates: Partial<Proposal>) => {
+  const updateProposal = async (proposalId: string, updates: Partial<Proposal>) => {
     if (isSupabaseMode() && user) {
-      void (async () => {
+      await (async () => {
         const supabase = getSupabaseClient();
         const payload: Record<string, unknown> = {};
         if (updates.title !== undefined) payload.title = updates.title;
@@ -446,7 +451,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
             groupId: activeGroupId || existingProposal.groupId || null,
           });
         }
-        refresh();
+        await refresh();
       })();
       return;
     }
@@ -467,7 +472,7 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-    refresh();
+    await refresh();
   };
 
   const deleteProposal = (proposalId: string) => {
@@ -588,22 +593,22 @@ export function ProposalProvider({ children }: { children: ReactNode }) {
         const { error } =
           availability.dates.length === 0
             ? await supabase
-                .from('availabilities')
-                .delete()
-                .eq('user_id', availability.userId)
-                .eq('proposal_id', availability.proposalId)
+              .from('availabilities')
+              .delete()
+              .eq('user_id', availability.userId)
+              .eq('proposal_id', availability.proposalId)
             : await supabase.from('availabilities').upsert(
-                {
-                  id: availability.id,
-                  group_id: activeGroupId,
-                  user_id: availability.userId,
-                  proposal_id: availability.proposalId,
-                  dates_json: availability.dates,
-                  time_slots_json: availability.timeSlots || null,
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'user_id,proposal_id' }
-              );
+              {
+                id: availability.id,
+                group_id: activeGroupId,
+                user_id: availability.userId,
+                proposal_id: availability.proposalId,
+                dates_json: availability.dates,
+                time_slots_json: availability.timeSlots || null,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id,proposal_id' }
+            );
         if (error) {
           console.error('Failed to upsert availability:', error);
           refresh();

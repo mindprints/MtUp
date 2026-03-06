@@ -1,0 +1,24 @@
+src/components/AiAssistantPanel.tsx(2,31): error TS2307: Cannot find module '@/lib/aiClient' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(3,29): error TS2307: Cannot find module '@/lib/memoryStore' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(4,49): error TS2307: Cannot find module '@/lib/memorySeeds' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(5,37): error TS2307: Cannot find module '@/lib/proposalThreadStore' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(6,40): error TS2307: Cannot find module '@/lib/proposalThumbnailStore' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(11,8): error TS2307: Cannot find module '@/lib/thumbnailGenerator' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(12,30): error TS2307: Cannot find module '@/lib/ProposalContext' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(13,28): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(14,88): error TS2307: Cannot find module '@/types' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(15,63): error TS2307: Cannot find module '@/components/AiProposalFormCard' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(16,23): error TS2307: Cannot find module '@/components/Modal' or its corresponding type declarations.
+src/components/AiAssistantPanel.tsx(634,33): error TS2339: Property 'imageUrl' does not exist on type 'unknown'.
+src/components/AiAssistantPanel.tsx(1819,21): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2055,39): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2084,39): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2106,39): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2129,37): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2327,32): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2379,55): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/components/AiAssistantPanel.tsx(2412,55): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/components/AiAssistantPanel.tsx(2443,55): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/components/AiAssistantPanel.tsx(2472,35): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2796,32): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/AiAssistantPanel.tsx(2946,65): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { ResolverQueue, type ResolverFilter } from '@/components/resolver/ResolverQueue';
 import { ResolverWorkspace } from '@/components/resolver/ResolverWorkspace';
 import { useAuth } from '@/lib/AuthContext';
@@ -13,20 +13,22 @@ export function ResolverScreen() {
   const [filter, setFilter] = useState<ResolverFilter>('all');
   const [showConfirmed, setShowConfirmed] = useState(false);
 
-  if (!user) return null;
+  const userNameById = useMemo(() => {
+    const map = new Map(groupUsers.map((member) => [member.id, member.name]));
+    if (user && !map.has(user.id)) {
+      map.set(user.id, user.name);
+    }
+    return map;
+  }, [groupUsers, user]);
 
-  const userNameById = new Map(groupUsers.map((member) => [member.id, member.name]));
-  if (!userNameById.has(user.id)) {
-    userNameById.set(user.id, user.name);
-  }
-
-  const visibleProposals = proposals.filter((proposal) => {
+  const visibleProposals = useMemo(() => proposals.filter((proposal) => {
+    if (!user) return false;
     if (!showConfirmed && proposal.status === 'confirmed') return false;
     if (filter === 'event') return proposal.type === 'event';
     if (filter === 'sejour') return proposal.type === 'sejour';
-    if (filter === 'mine') return proposal.createdBy === user.id;
+    if (filter === 'mine') return proposal.createdBy === user?.id;
     return true;
-  });
+  }), [proposals, showConfirmed, filter, user]);
 
   useEffect(() => {
     if (visibleProposals.length === 0) {
@@ -38,6 +40,8 @@ export function ResolverScreen() {
       setSelectedProposalId(visibleProposals[0].id);
     }
   }, [selectedProposalId, visibleProposals]);
+
+  if (!user) return null;
 
   const selectedProposal =
     visibleProposals.find((proposal) => proposal.id === selectedProposalId) || null;
@@ -55,14 +59,14 @@ export function ResolverScreen() {
     ])
   );
 
-  const handleAddComment = (proposalId: string, text: string) => {
+  const handleAddComment = async (proposalId: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
     const proposal = proposals.find((entry) => entry.id === proposalId);
     if (!proposal) return;
 
-    updateProposal(proposalId, {
+    await updateProposal(proposalId, {
       comments: [
         ...(proposal.comments || []),
         {

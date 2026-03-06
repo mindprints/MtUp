@@ -13,7 +13,11 @@ import { useProposals } from '@/lib/ProposalContext';
 import { generateId } from '@/lib/utils';
 import type { AiActionProposal, AiMessage, Availability, MemoryRecord, Proposal } from '@/types';
 import { AiProposalFormCard, type AiProposalFormValues } from '@/components/AiProposalFormCard';
-import { Modal } from '@/components/Modal';
+import { MemoryExplorer } from '@/components/ai-assistant/MemoryExplorer';
+import { CalendarModal, type CalendarPopupState } from '@/components/ai-assistant/CalendarModal';
+import { SuggestAlternativesModal } from '@/components/ai-assistant/SuggestAlternativesModal';
+import { ProposalCommentsSection } from '@/components/ai-assistant/ProposalCommentsSection';
+import { ProposalFlowEditor } from '@/components/ai-assistant/ProposalFlowEditor';
 
 type AiAssistantPanelProps = {
   userId: string;
@@ -24,9 +28,8 @@ type AiAssistantPanelProps = {
   onProposalFlowGoActivities?: () => void;
 };
 
-type MemoryStatusFilter = MemoryRecord['status'] | 'all';
-type MemoryTypeFilter = 'all' | 'availability_';
-type ProposalCardDrafts = Record<
+
+export type ProposalCardDrafts = Record<
   string,
   {
     dateSuggestion: string;
@@ -40,20 +43,14 @@ type ProposalCardDrafts = Record<
 
 const EXPECTED_GROUP_MEMBER_NAMES = ['Alice', 'Bob', 'Charlie', 'Denise', 'Eve'] as const;
 
-type CalendarPopupState = {
-  proposalId: string;
-  proposalTitle: string;
-  anchorMonthIso: string;
-  originalDates: string[];
-  alternativeDates: string[];
-};
+
 
 type ParsedDateRange = {
   startDate: string;
   endDate: string;
 };
 
-type ProposalFlowEditDraft = {
+export type ProposalFlowEditDraft = {
   title: string;
   startDate: string;
   endDate: string;
@@ -79,7 +76,7 @@ function readStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-function parseIsoDatesFromText(input: string): string[] {
+export function parseIsoDatesFromText(input: string): string[] {
   const trimmed = input.trim();
   if (!trimmed) return [];
   const rangeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})$/i);
@@ -99,7 +96,7 @@ function parseIsoDatesFromText(input: string): string[] {
   return dates ? Array.from(new Set(dates)) : [];
 }
 
-function parseDateRangeFromText(input: string): ParsedDateRange {
+export function parseDateRangeFromText(input: string): ParsedDateRange {
   const dates = parseIsoDatesFromText(input);
   if (dates.length === 0) {
     return { startDate: '', endDate: '' };
@@ -110,7 +107,7 @@ function parseDateRangeFromText(input: string): ParsedDateRange {
   };
 }
 
-function formatDateRangeText(startDate: string, endDate: string): string {
+export function formatDateRangeText(startDate: string | null | undefined, endDate: string | null | undefined): string {
   if (!startDate && !endDate) return '';
   const normalizedStart = startDate || endDate;
   const normalizedEnd = endDate || startDate;
@@ -120,48 +117,9 @@ function formatDateRangeText(startDate: string, endDate: string): string {
     : `${normalizedStart} to ${normalizedEnd}`;
 }
 
-function shiftIsoDateByDays(isoDate: string, deltaDays: number): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setUTCDate(date.getUTCDate() + deltaDays);
-  return date.toISOString().slice(0, 10);
-}
 
-function getMonthIsoFromDateIso(dateIso: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
-  return dateIso.slice(0, 7);
-}
 
-function getMonthBoundaries(monthIso: string): { firstDayIso: string; lastDayIso: string } | null {
-  const [yearText, monthText] = monthIso.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  if (!year || !month) return null;
-  const firstDayIso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const lastDayIso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  return { firstDayIso, lastDayIso };
-}
-
-function collectCalendarMonthIsos(
-  originalDates: string[],
-  alternativeDates: string[],
-  anchorMonthIso: string
-): string[] {
-  const monthSet = new Set<string>();
-  [...originalDates, ...alternativeDates].forEach((dateIso) => {
-    const monthIso = getMonthIsoFromDateIso(dateIso);
-    if (monthIso) monthSet.add(monthIso);
-  });
-  if (monthSet.size === 0) {
-    const anchorMonth = anchorMonthIso.slice(0, 7);
-    monthSet.add(anchorMonth);
-  }
-  return Array.from(monthSet).sort();
-}
-
-function formatTo24HourTimeText(input: string): string {
+export function formatTo24HourTimeText(input: string): string {
   if (!input.trim()) return input;
   return input.replace(/\b(\d{1,2})(?::(\d{2}))?\s*([ap])(?:\.?m\.?)?\b/gi, (_, h, m, meridiem) => {
     const rawHour = Number(h);
@@ -173,53 +131,9 @@ function formatTo24HourTimeText(input: string): string {
   });
 }
 
-function formatIsoMonthLabel(anchorIso: string): string {
-  const [yearText, monthText] = anchorIso.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  if (!year || !month) return anchorIso;
-  const monthNames = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-  return `${monthNames[month - 1]} ${year}`;
-}
 
-function buildMonthCells(anchorIso: string): Array<{ iso: string | null; day: number | null }> {
-  const [yearText, monthText] = anchorIso.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  if (!year || !month) return [];
 
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const firstWeekday = new Date(year, month - 1, 1).getDay();
-  const leadingBlanks = (firstWeekday + 6) % 7; // Monday-first grid
-
-  const cells: Array<{ iso: string | null; day: number | null }> = [];
-  for (let i = 0; i < leadingBlanks; i += 1) {
-    cells.push({ iso: null, day: null });
-  }
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    cells.push({ iso, day });
-  }
-  while (cells.length % 7 !== 0) {
-    cells.push({ iso: null, day: null });
-  }
-  return cells;
-}
-
-function formatProposalBaseline(proposal: Proposal): string {
+export function formatProposalBaseline(proposal: Proposal): string {
   const parts = [
     proposal.specifics?.date ? `Date: ${proposal.specifics.date}` : null,
     proposal.specifics?.time ? `Time: ${proposal.specifics.time}` : null,
@@ -252,7 +166,7 @@ function escapeIcsText(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 }
 
-function proposalCardTheme(index: number) {
+export function proposalCardTheme(index: number) {
   const themes = [
     {
       shell:
@@ -286,7 +200,7 @@ function proposalCardTheme(index: number) {
   return themes[index % themes.length];
 }
 
-function ProposalFlag({
+export function ProposalFlag({
   label,
   tone = 'neutral',
 }: {
@@ -306,7 +220,7 @@ function ProposalFlag({
   );
 }
 
-function userInitials(name: string): string {
+export function userInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
   return parts
@@ -315,7 +229,7 @@ function userInitials(name: string): string {
     .join('');
 }
 
-function buildProposalFlowEditDraft(proposal: Proposal): ProposalFlowEditDraft {
+export function buildProposalFlowEditDraft(proposal: Proposal): ProposalFlowEditDraft {
   const parsedRange = parseDateRangeFromText(proposal.specifics?.date || '');
   return {
     title: proposal.title || '',
@@ -427,6 +341,8 @@ function summarizeMemoryRecord(record: MemoryRecord): string {
   return record.factType.split('_').join(' ');
 }
 
+
+
 export function AiAssistantPanel({
   userId,
   activeGroupId,
@@ -469,8 +385,7 @@ export function AiAssistantPanel({
     Record<string, MemoryRecord[]>
   >({});
   const [showMemoryExplorer, setShowMemoryExplorer] = useState(false);
-  const [memoryStatusFilter, setMemoryStatusFilter] = useState<MemoryStatusFilter>('all');
-  const [memoryTypeFilter, setMemoryTypeFilter] = useState<MemoryTypeFilter>('all');
+
   const [memorySeedStatus, setMemorySeedStatus] = useState<string | null>(null);
   const [proposalCardDrafts, setProposalCardDrafts] = useState<ProposalCardDrafts>({});
   const [proposalFeedRefreshTick, setProposalFeedRefreshTick] = useState(0);
@@ -541,7 +456,7 @@ export function AiAssistantPanel({
     });
   }, [proposalFlow, proposals, userId]);
 
-  useEffect(() => {
+  const syncProposalFlowSelection = () => {
     if (!proposalFlow) return;
     const isAdmin = groupUsers.some((member) => member.id === userId && member.isAdmin);
     const availableUserIds = new Set<string>(
@@ -574,6 +489,10 @@ export function AiAssistantPanel({
     if (!exists) {
       setProposalFlowEditorProposalId(proposalsForSelectedUser[0].id);
     }
+  };
+
+  useEffect(() => {
+    syncProposalFlowSelection();
   }, [
     proposalFlow,
     proposals,
@@ -609,25 +528,25 @@ export function AiAssistantPanel({
       const createdComments = [
         ...(requirementsValue
           ? [
-              {
-                id: generateId(),
-                userId,
-                proposalId: createdProposalId,
-                text: `Requirements: ${requirementsValue}`,
-                createdAt,
-              },
-            ]
+            {
+              id: generateId(),
+              userId,
+              proposalId: createdProposalId,
+              text: `Requirements: ${requirementsValue}`,
+              createdAt,
+            },
+          ]
           : []),
         ...(commentsValue
           ? [
-              {
-                id: generateId(),
-                userId,
-                proposalId: createdProposalId,
-                text: commentsValue,
-                createdAt,
-              },
-            ]
+            {
+              id: generateId(),
+              userId,
+              proposalId: createdProposalId,
+              text: commentsValue,
+              createdAt,
+            },
+          ]
           : []),
       ];
       const createdProposal: Proposal = {
@@ -712,10 +631,7 @@ export function AiAssistantPanel({
   const refreshRecentMemories = () => {
     setRecentMemories(memoryStore.listForUser(userId, activeGroupId).slice(0, 4));
   };
-  const allMemoryRecords = memoryStore.listForGroupFiltered(activeGroupId, {
-    status: memoryStatusFilter,
-    factTypePrefix: memoryTypeFilter,
-  });
+
 
   const handleConfirmMemory = (recordId: string) => {
     memoryStore.update(recordId, { status: 'confirmed' });
@@ -950,7 +866,7 @@ export function AiAssistantPanel({
     }));
   };
 
-  const handleAddProposalComment = (proposal: Proposal) => {
+  const handleAddProposalComment = async (proposal: Proposal) => {
     const text = (commentDraftByProposalId[proposal.id] || '').trim();
     if (!text) return;
     const nextComments = [
@@ -963,7 +879,7 @@ export function AiAssistantPanel({
         createdAt: new Date().toISOString(),
       },
     ];
-    updateProposal(proposal.id, { comments: nextComments });
+    await updateProposal(proposal.id, { comments: nextComments });
     setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: '' }));
   };
 
@@ -1045,7 +961,7 @@ export function AiAssistantPanel({
     }));
   };
 
-  const handleSaveProposalFlowEdit = (proposal: Proposal) => {
+  const handleSaveProposalFlowEdit = async (proposal: Proposal) => {
     const draft = proposalFlowEditDrafts[proposal.id] || buildProposalFlowEditDraft(proposal);
     const nextTitle = draft.title.trim();
     if (!nextTitle) {
@@ -1066,13 +982,14 @@ export function AiAssistantPanel({
     else delete nextSpecifics.location;
 
     setProposalFlowSavingById((prev) => ({ ...prev, [proposal.id]: true }));
-    updateProposal(proposal.id, {
+    await updateProposal(proposal.id, {
       title: nextTitle,
       specifics: nextSpecifics,
     });
     setProposalFeedRefreshTick((tick) => tick + 1);
     setProposalFlowSavingById((prev) => ({ ...prev, [proposal.id]: false }));
   };
+
 
   const handleAddToCalendar = (proposal: Proposal) => {
     const parsedDates = parseIsoDatesFromText(proposal.specifics?.date || '');
@@ -1186,10 +1103,10 @@ export function AiAssistantPanel({
     groupUsers.length > 0
       ? groupUsers
       : EXPECTED_GROUP_MEMBER_NAMES.map((name, index) => ({
-          id: `expected-member-${index + 1}`,
-          name,
-          isAdmin: name === 'Alice',
-        }));
+        id: `expected-member-${index + 1}`,
+        name,
+        isAdmin: name === 'Alice',
+      }));
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1300,7 +1217,7 @@ export function AiAssistantPanel({
   const latestProposalFlowDraftValues =
     latestProposalFlowActionMessageId && latestProposalFlowActionProposal
       ? proposalFlowDraftValuesByMessageId[latestProposalFlowActionMessageId] ||
-        getInitialDraftValues(latestProposalFlowActionProposal)
+      getInitialDraftValues(latestProposalFlowActionProposal)
       : null;
   const userNameById = new Map(displayGroupUsers.map((member) => [member.id, member.name]));
   const currentUserIsAdmin = displayGroupUsers.some(
@@ -1317,8 +1234,8 @@ export function AiAssistantPanel({
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const selectedEditableProposal = proposalFlowEditorProposalId
     ? editableProposalsForSelectedUser.find(
-        (proposal) => proposal.id === proposalFlowEditorProposalId
-      ) || null
+      (proposal) => proposal.id === proposalFlowEditorProposalId
+    ) || null
     : null;
   const canEditSelectedProposal =
     Boolean(selectedEditableProposal) &&
@@ -1359,69 +1276,105 @@ export function AiAssistantPanel({
                 {messages.length > 0 && (
                   <div className="space-y-2">
                     {messages.map((message) => {
-                    const draftProposal = actionProposalsByMessageId[message.id];
-                    const shouldShowDraftDetails =
-                      message.role === 'assistant' &&
-                      Boolean(draftProposal) &&
-                      !hiddenActionMessageIds[message.id];
-                    const shouldShowMessageBubble =
-                      !(
+                      const draftProposal = actionProposalsByMessageId[message.id];
+                      const shouldShowDraftDetails =
                         message.role === 'assistant' &&
                         Boolean(draftProposal) &&
-                        !hiddenActionMessageIds[message.id]
-                      );
-                    const draftValues = draftProposal
-                      ? proposalFlowDraftValuesByMessageId[message.id] || getInitialDraftValues(draftProposal)
-                      : null;
-                    const draftDateRange = draftValues
-                      ? parseDateRangeFromText(draftValues.dates)
-                      : { startDate: '', endDate: '' };
-                    const isSejourDraft = draftProposal?.payload?.proposalDraft?.type === 'sejour';
-                    const alternativeDraft = proposalFlowAlternativeDraftsByMessageId[message.id] || {
-                      startDate: '',
-                      endDate: '',
-                      time: '',
-                      place: '',
-                    };
-                    const pendingAlternatives =
-                      pendingAlternativeSuggestionsByMessageId[message.id] || [];
-                    return (
-                      <div key={message.id} className="space-y-1.5">
-                        {shouldShowMessageBubble && (
-                          <div
-                            className={`rounded px-3 py-2 text-sm ${
-                              message.role === 'user'
+                        !hiddenActionMessageIds[message.id];
+                      const shouldShowMessageBubble =
+                        !(
+                          message.role === 'assistant' &&
+                          Boolean(draftProposal) &&
+                          !hiddenActionMessageIds[message.id]
+                        );
+                      const draftValues = draftProposal
+                        ? proposalFlowDraftValuesByMessageId[message.id] || getInitialDraftValues(draftProposal)
+                        : null;
+                      const draftDateRange = draftValues
+                        ? parseDateRangeFromText(draftValues.dates)
+                        : { startDate: '', endDate: '' };
+                      const isSejourDraft = draftProposal?.payload?.proposalDraft?.type === 'sejour';
+                      const alternativeDraft = proposalFlowAlternativeDraftsByMessageId[message.id] || {
+                        startDate: '',
+                        endDate: '',
+                        time: '',
+                        place: '',
+                      };
+                      const pendingAlternatives =
+                        pendingAlternativeSuggestionsByMessageId[message.id] || [];
+                      return (
+                        <div key={message.id} className="space-y-1.5">
+                          {shouldShowMessageBubble && (
+                            <div
+                              className={`rounded px-3 py-2 text-sm ${message.role === 'user'
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'border border-gray-200 bg-white text-gray-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
-                            }`}
-                          >
-                            <div className="text-[10px] uppercase tracking-wide opacity-70">
-                              {message.role === 'assistant' ? 'Snooky' : message.role}
+                                }`}
+                            >
+                              <div className="text-[10px] uppercase tracking-wide opacity-70">
+                                {message.role === 'assistant' ? 'Snooky' : message.role}
+                              </div>
+                              <div className="whitespace-pre-wrap break-words">{message.content}</div>
                             </div>
-                            <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                          </div>
-                        )}
-                        {shouldShowDraftDetails && (
-                          <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
-                            {draftProposal && draftValues && (
-                              <div className="mt-1 space-y-1.5">
-                                <input
-                                  type="text"
-                                  value={draftValues.title}
-                                  onChange={(e) =>
-                                    updateProposalFlowDraftField(
-                                      message.id,
-                                      draftProposal,
-                                      'title',
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="Title"
-                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
-                                />
-                                <div className={`grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-                                  {isSejourDraft ? (
-                                    <>
+                          )}
+                          {shouldShowDraftDetails && (
+                            <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
+                              {draftProposal && draftValues && (
+                                <div className="mt-1 space-y-1.5">
+                                  <input
+                                    type="text"
+                                    value={draftValues.title}
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'title',
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Title"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                  <div className={`grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                                    {isSejourDraft ? (
+                                      <>
+                                        <input
+                                          type="date"
+                                          value={draftDateRange.startDate}
+                                          onChange={(e) =>
+                                            updateProposalFlowDraftField(
+                                              message.id,
+                                              draftProposal,
+                                              'dates',
+                                              formatDateRangeText(
+                                                e.target.value,
+                                                draftDateRange.endDate
+                                              )
+                                            )
+                                          }
+                                          aria-label="Start date"
+                                          className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                        />
+                                        <input
+                                          type="date"
+                                          value={draftDateRange.endDate}
+                                          min={draftDateRange.startDate || undefined}
+                                          onChange={(e) =>
+                                            updateProposalFlowDraftField(
+                                              message.id,
+                                              draftProposal,
+                                              'dates',
+                                              formatDateRangeText(
+                                                draftDateRange.startDate,
+                                                e.target.value
+                                              )
+                                            )
+                                          }
+                                          aria-label="End date"
+                                          className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                        />
+                                      </>
+                                    ) : (
                                       <input
                                         type="date"
                                         value={draftDateRange.startDate}
@@ -1430,250 +1383,213 @@ export function AiAssistantPanel({
                                             message.id,
                                             draftProposal,
                                             'dates',
-                                            formatDateRangeText(
-                                              e.target.value,
-                                              draftDateRange.endDate
-                                            )
+                                            e.target.value
                                           )
                                         }
-                                        aria-label="Start date"
+                                        aria-label="Date"
                                         className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                      />
-                                      <input
-                                        type="date"
-                                        value={draftDateRange.endDate}
-                                        min={draftDateRange.startDate || undefined}
-                                        onChange={(e) =>
-                                          updateProposalFlowDraftField(
-                                            message.id,
-                                            draftProposal,
-                                            'dates',
-                                            formatDateRangeText(
-                                              draftDateRange.startDate,
-                                              e.target.value
-                                            )
-                                          )
-                                        }
-                                        aria-label="End date"
-                                        className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                      />
-                                    </>
-                                  ) : (
-                                    <input
-                                      type="date"
-                                      value={draftDateRange.startDate}
-                                      onChange={(e) =>
-                                        updateProposalFlowDraftField(
-                                          message.id,
-                                          draftProposal,
-                                          'dates',
-                                          e.target.value
-                                        )
-                                      }
-                                      aria-label="Date"
-                                      className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                    />
-                                  )}
-                                  <input
-                                    type="time"
-                                    value={
-                                      /^\d{2}:\d{2}$/.test(draftValues.times.trim())
-                                        ? draftValues.times.trim()
-                                        : ''
-                                    }
-                                    step={900}
-                                    onChange={(e) =>
-                                      updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
-                                        'times',
-                                        e.target.value
-                                      )
-                                    }
-                                    aria-label="Time"
-                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                  />
-                                </div>
-                                <textarea
-                                  value={draftValues.invitees}
-                                  onChange={(e) =>
-                                    updateProposalFlowDraftField(
-                                      message.id,
-                                      draftProposal,
-                                      'invitees',
-                                      e.target.value
-                                    )
-                                  }
-                                  rows={2}
-                                  placeholder="Invitees"
-                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
-                                />
-                                <textarea
-                                  value={draftValues.place}
-                                  onChange={(e) =>
-                                    updateProposalFlowDraftField(
-                                      message.id,
-                                      draftProposal,
-                                      'place',
-                                      e.target.value
-                                    )
-                                  }
-                                  rows={2}
-                                  placeholder="Place"
-                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
-                                />
-                                <textarea
-                                  value={draftValues.requirements}
-                                  onChange={(e) =>
-                                    updateProposalFlowDraftField(
-                                      message.id,
-                                      draftProposal,
-                                      'requirements',
-                                      e.target.value
-                                    )
-                                  }
-                                  rows={2}
-                                  placeholder="Requirements"
-                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
-                                />
-                                <textarea
-                                  value={draftValues.comments}
-                                  onChange={(e) =>
-                                    updateProposalFlowDraftField(
-                                      message.id,
-                                      draftProposal,
-                                      'comments',
-                                      e.target.value
-                                    )
-                                  }
-                                  rows={2}
-                                  placeholder="Comments"
-                                  className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
-                                />
-                                <div className="rounded border border-sky-300 bg-white p-2 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100">
-                                  <p className="font-semibold text-sky-900 dark:text-sky-200">
-                                    Add alternative suggestions before confirming
-                                  </p>
-                                  <div className={`mt-1 grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                                    {isSejourDraft ? (
-                                      <>
-                                        <input
-                                          type="date"
-                                          value={alternativeDraft.startDate}
-                                          onChange={(e) =>
-                                            updateProposalFlowAlternativeDraft(
-                                              message.id,
-                                              'startDate',
-                                              e.target.value
-                                            )
-                                          }
-                                          aria-label="Alternative start date"
-                                          className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                        />
-                                        <input
-                                          type="date"
-                                          value={alternativeDraft.endDate}
-                                          min={alternativeDraft.startDate || undefined}
-                                          onChange={(e) =>
-                                            updateProposalFlowAlternativeDraft(
-                                              message.id,
-                                              'endDate',
-                                              e.target.value
-                                            )
-                                          }
-                                          aria-label="Alternative end date"
-                                          className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                        />
-                                      </>
-                                    ) : (
-                                      <input
-                                        type="date"
-                                        value={alternativeDraft.startDate}
-                                        onChange={(e) => {
-                                          updateProposalFlowAlternativeDraft(
-                                            message.id,
-                                            'startDate',
-                                            e.target.value
-                                          );
-                                          updateProposalFlowAlternativeDraft(
-                                            message.id,
-                                            'endDate',
-                                            e.target.value
-                                          );
-                                        }}
-                                        aria-label="Alternative date"
-                                        className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
                                       />
                                     )}
                                     <input
                                       type="time"
-                                      value={alternativeDraft.time}
+                                      value={
+                                        /^\d{2}:\d{2}$/.test(draftValues.times.trim())
+                                          ? draftValues.times.trim()
+                                          : ''
+                                      }
                                       step={900}
                                       onChange={(e) =>
-                                        updateProposalFlowAlternativeDraft(
+                                        updateProposalFlowDraftField(
                                           message.id,
-                                          'time',
+                                          draftProposal,
+                                          'times',
                                           e.target.value
                                         )
                                       }
-                                      aria-label="Alternative time"
-                                      className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={alternativeDraft.place}
-                                      onChange={(e) =>
-                                        updateProposalFlowAlternativeDraft(
-                                          message.id,
-                                          'place',
-                                          e.target.value
-                                        )
-                                      }
-                                      placeholder="Alternative place"
-                                      className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900"
+                                      aria-label="Time"
+                                      className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
                                     />
                                   </div>
-                                  <div className="mt-1.5 flex items-center justify-between gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => addPendingAlternativeSuggestion(message.id)}
-                                      className="rounded bg-sky-700 px-2 py-1 text-[11px] font-medium text-white hover:bg-sky-800"
-                                    >
-                                      Queue Alternative
-                                    </button>
-                                    <span className="text-[10px] text-sky-700 dark:text-sky-300">
-                                      {pendingAlternatives.length} queued
-                                    </span>
-                                  </div>
-                                  {pendingAlternatives.length > 0 && (
-                                    <div className="mt-1.5 space-y-1">
-                                      {pendingAlternatives.map((entry) => (
-                                        <div key={entry.id} className="flex items-center gap-1.5">
-                                          <span className="flex-1 truncate">
-                                            {[entry.dateText, entry.timeText, entry.placeText]
-                                              .filter(Boolean)
-                                              .join(' | ')}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              removePendingAlternativeSuggestion(message.id, entry.id)
+                                  <textarea
+                                    value={draftValues.invitees}
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'invitees',
+                                        e.target.value
+                                      )
+                                    }
+                                    rows={2}
+                                    placeholder="Invitees"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                  <textarea
+                                    value={draftValues.place}
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'place',
+                                        e.target.value
+                                      )
+                                    }
+                                    rows={2}
+                                    placeholder="Place"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                  <textarea
+                                    value={draftValues.requirements}
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'requirements',
+                                        e.target.value
+                                      )
+                                    }
+                                    rows={2}
+                                    placeholder="Requirements"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                  <textarea
+                                    value={draftValues.comments}
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        message.id,
+                                        draftProposal,
+                                        'comments',
+                                        e.target.value
+                                      )
+                                    }
+                                    rows={2}
+                                    placeholder="Comments"
+                                    className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
+                                  />
+                                  <div className="rounded border border-sky-300 bg-white p-2 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100">
+                                    <p className="font-semibold text-sky-900 dark:text-sky-200">
+                                      Add alternative suggestions before confirming
+                                    </p>
+                                    <div className={`mt-1 grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                                      {isSejourDraft ? (
+                                        <>
+                                          <input
+                                            type="date"
+                                            value={alternativeDraft.startDate}
+                                            onChange={(e) =>
+                                              updateProposalFlowAlternativeDraft(
+                                                message.id,
+                                                'startDate',
+                                                e.target.value
+                                              )
                                             }
-                                            className="rounded border border-sky-300 px-1.5 py-0.5 text-[10px] dark:border-sky-900/60"
-                                          >
-                                            Remove
-                                          </button>
-                                        </div>
-                                      ))}
+                                            aria-label="Alternative start date"
+                                            className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                          />
+                                          <input
+                                            type="date"
+                                            value={alternativeDraft.endDate}
+                                            min={alternativeDraft.startDate || undefined}
+                                            onChange={(e) =>
+                                              updateProposalFlowAlternativeDraft(
+                                                message.id,
+                                                'endDate',
+                                                e.target.value
+                                              )
+                                            }
+                                            aria-label="Alternative end date"
+                                            className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                          />
+                                        </>
+                                      ) : (
+                                        <input
+                                          type="date"
+                                          value={alternativeDraft.startDate}
+                                          onChange={(e) => {
+                                            updateProposalFlowAlternativeDraft(
+                                              message.id,
+                                              'startDate',
+                                              e.target.value
+                                            );
+                                            updateProposalFlowAlternativeDraft(
+                                              message.id,
+                                              'endDate',
+                                              e.target.value
+                                            );
+                                          }}
+                                          aria-label="Alternative date"
+                                          className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        />
+                                      )}
+                                      <input
+                                        type="time"
+                                        value={alternativeDraft.time}
+                                        step={900}
+                                        onChange={(e) =>
+                                          updateProposalFlowAlternativeDraft(
+                                            message.id,
+                                            'time',
+                                            e.target.value
+                                          )
+                                        }
+                                        aria-label="Alternative time"
+                                        className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={alternativeDraft.place}
+                                        onChange={(e) =>
+                                          updateProposalFlowAlternativeDraft(
+                                            message.id,
+                                            'place',
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Alternative place"
+                                        className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900"
+                                      />
                                     </div>
-                                  )}
+                                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => addPendingAlternativeSuggestion(message.id)}
+                                        className="rounded bg-sky-700 px-2 py-1 text-[11px] font-medium text-white hover:bg-sky-800"
+                                      >
+                                        Queue Alternative
+                                      </button>
+                                      <span className="text-[10px] text-sky-700 dark:text-sky-300">
+                                        {pendingAlternatives.length} queued
+                                      </span>
+                                    </div>
+                                    {pendingAlternatives.length > 0 && (
+                                      <div className="mt-1.5 space-y-1">
+                                        {pendingAlternatives.map((entry) => (
+                                          <div key={entry.id} className="flex items-center gap-1.5">
+                                            <span className="flex-1 truncate">
+                                              {[entry.dateText, entry.timeText, entry.placeText]
+                                                .filter(Boolean)
+                                                .join(' | ')}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                removePendingAlternativeSuggestion(message.id, entry.id)
+                                              }
+                                              className="rounded border border-sky-300 px-1.5 py-0.5 text-[10px] dark:border-sky-900/60"
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
                     })}
                   </div>
                 )}
@@ -1740,326 +1656,24 @@ export function AiAssistantPanel({
                   </select>
                   {(() => {
                     const proposal = selectedEditableProposal;
-                    const draft =
-                      proposalFlowEditDrafts[proposal.id] || buildProposalFlowEditDraft(proposal);
-                    const contributions = proposalThreadStore
-                      .listForProposal(proposal.id)
-                      .filter((entry) => entry.kind === 'field_change' && entry.userId !== userId);
-                    const dateSuggestions = contributions.filter((entry) => entry.field === 'date');
-                    const timeSuggestions = contributions.filter((entry) => entry.field === 'time');
-                    const placeSuggestions = contributions.filter((entry) => entry.field === 'place');
 
                     return (
-                      <>
-                        <input
-                          type="text"
-                          value={draft.title}
-                          onChange={(e) =>
-                            updateProposalFlowEditField(proposal.id, 'title', e.target.value)
-                          }
-                          disabled={!canEditSelectedProposal}
-                          placeholder="Title"
-                          className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
-                        />
-                        <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-                          {proposal.type === 'sejour' ? (
-                            <>
-                              <input
-                                type="date"
-                                value={draft.startDate}
-                                onChange={(e) =>
-                                  updateProposalFlowEditField(proposal.id, 'startDate', e.target.value)
-                                }
-                                disabled={!canEditSelectedProposal}
-                                aria-label="Proposal start date"
-                                className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                              />
-                              <input
-                                type="date"
-                                value={draft.endDate}
-                                min={draft.startDate || undefined}
-                                onChange={(e) =>
-                                  updateProposalFlowEditField(proposal.id, 'endDate', e.target.value)
-                                }
-                                disabled={!canEditSelectedProposal}
-                                aria-label="Proposal end date"
-                                className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                              />
-                            </>
-                          ) : (
-                            <input
-                              type="date"
-                              value={draft.startDate}
-                              onChange={(e) => {
-                                updateProposalFlowEditField(proposal.id, 'startDate', e.target.value);
-                                updateProposalFlowEditField(proposal.id, 'endDate', e.target.value);
-                              }}
-                              disabled={!canEditSelectedProposal}
-                              aria-label="Proposal date"
-                              className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                            />
-                          )}
-                          <input
-                            type="time"
-                            value={draft.time}
-                            step={900}
-                            onChange={(e) =>
-                              updateProposalFlowEditField(proposal.id, 'time', e.target.value)
-                            }
-                            disabled={!canEditSelectedProposal}
-                            aria-label="Proposal time"
-                            className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                          />
-                        </div>
-                        <input
-                          type="text"
-                          value={draft.place}
-                          onChange={(e) =>
-                            updateProposalFlowEditField(proposal.id, 'place', e.target.value)
-                          }
-                          disabled={!canEditSelectedProposal}
-                          placeholder="Place"
-                          className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
-                        />
-                        <div className="space-y-1 rounded border border-indigo-200 bg-indigo-50/70 p-2 text-[11px] dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                          <p className="font-semibold text-indigo-900 dark:text-indigo-200">
-                            Suggest alternative
-                          </p>
-                          {(() => {
-                            const altDraft = editorAlternativeDraftByProposalId[proposal.id] || {
-                              startDate: '',
-                              endDate: '',
-                              time: '',
-                              place: '',
-                            };
-                            return (
-                              <>
-                                <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                                  <input
-                                    type="date"
-                                    value={altDraft.startDate}
-                                    onChange={(e) => {
-                                      updateEditorAlternativeDraftField(
-                                        proposal.id,
-                                        'startDate',
-                                        e.target.value
-                                      );
-                                      if (proposal.type !== 'sejour') {
-                                        updateEditorAlternativeDraftField(
-                                          proposal.id,
-                                          'endDate',
-                                          e.target.value
-                                        );
-                                      }
-                                    }}
-                                    disabled={!canEditSelectedProposal}
-                                    aria-label="Alternative date"
-                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                  />
-                                  {proposal.type === 'sejour' && (
-                                    <input
-                                      type="date"
-                                      value={altDraft.endDate}
-                                      min={altDraft.startDate || undefined}
-                                      onChange={(e) =>
-                                        updateEditorAlternativeDraftField(
-                                          proposal.id,
-                                          'endDate',
-                                          e.target.value
-                                        )
-                                      }
-                                      disabled={!canEditSelectedProposal}
-                                      aria-label="Alternative end date"
-                                      className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                    />
-                                  )}
-                                  <input
-                                    type="time"
-                                    value={altDraft.time}
-                                    step={900}
-                                    onChange={(e) =>
-                                      updateEditorAlternativeDraftField(
-                                        proposal.id,
-                                        'time',
-                                        e.target.value
-                                      )
-                                    }
-                                    disabled={!canEditSelectedProposal}
-                                    aria-label="Alternative time"
-                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={altDraft.place}
-                                    onChange={(e) =>
-                                      updateEditorAlternativeDraftField(
-                                        proposal.id,
-                                        'place',
-                                        e.target.value
-                                      )
-                                    }
-                                    disabled={!canEditSelectedProposal}
-                                    placeholder="Alternative place"
-                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900"
-                                  />
-                                </div>
-                                <div className="flex justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSubmitEditorAlternative(proposal)}
-                                    disabled={!canEditSelectedProposal}
-                                    className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] text-indigo-800 hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200 dark:hover:bg-indigo-900/20"
-                                  >
-                                    Add Alternative
-                                  </button>
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-
-                        {(dateSuggestions.length > 0 ||
-                          timeSuggestions.length > 0 ||
-                          placeSuggestions.length > 0) && (
-                          <div className="space-y-1.5 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-                            <p className="font-semibold">Alternatives from others</p>
-                            {dateSuggestions.map((change) => {
-                              const text =
-                                typeof change.value.dateText === 'string'
-                                  ? String(change.value.dateText)
-                                  : typeof change.value.text === 'string'
-                                    ? String(change.value.text)
-                                    : '';
-                              const parsed = parseDateRangeFromText(text);
-                              return (
-                                <div key={`proposal-flow-alt-date-${change.id}`} className="flex items-center gap-1.5">
-                                  <span className="flex-1 truncate">
-                                    {userNameById.get(change.userId) || 'Someone'} suggested date:{' '}
-                                    {text || 'unspecified'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      updateProposalFlowEditField(proposal.id, 'startDate', parsed.startDate);
-                                      updateProposalFlowEditField(
-                                        proposal.id,
-                                        'endDate',
-                                        proposal.type === 'sejour' ? parsed.endDate : parsed.startDate
-                                      );
-                                    }}
-                                    disabled={!canEditSelectedProposal}
-                                    className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
-                                  >
-                                    Use
-                                  </button>
-                                </div>
-                              );
-                            })}
-                            {timeSuggestions.map((change) => {
-                              const text =
-                                typeof change.value.text === 'string'
-                                  ? String(change.value.text)
-                                  : '';
-                              return (
-                                <div key={`proposal-flow-alt-time-${change.id}`} className="flex items-center gap-1.5">
-                                  <span className="flex-1 truncate">
-                                    {userNameById.get(change.userId) || 'Someone'} suggested time:{' '}
-                                    {text || 'unspecified'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateProposalFlowEditField(proposal.id, 'time', text)}
-                                    disabled={!canEditSelectedProposal}
-                                    className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
-                                  >
-                                    Use
-                                  </button>
-                                </div>
-                              );
-                            })}
-                            {placeSuggestions.map((change) => {
-                              const text =
-                                typeof change.value.text === 'string'
-                                  ? String(change.value.text)
-                                  : '';
-                              return (
-                                <div key={`proposal-flow-alt-place-${change.id}`} className="flex items-center gap-1.5">
-                                  <span className="flex-1 truncate">
-                                    {userNameById.get(change.userId) || 'Someone'} suggested place:{' '}
-                                    {text || 'unspecified'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateProposalFlowEditField(proposal.id, 'place', text)}
-                                    disabled={!canEditSelectedProposal}
-                                    className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
-                                  >
-                                    Use
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <div className="space-y-1 rounded border border-indigo-200 bg-indigo-50/70 p-2 text-[11px] dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                          <p className="font-semibold text-indigo-900 dark:text-indigo-200">Comments</p>
-                          {(proposal.comments || []).length > 0 ? (
-                            <div className="space-y-1">
-                              {(proposal.comments || []).map((comment) => (
-                                <div key={comment.id} className="rounded bg-white px-2 py-1 dark:bg-slate-900">
-                                  <span className="font-medium">
-                                    {userNameById.get(comment.userId) || 'User'}:
-                                  </span>{' '}
-                                  {comment.text}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-indigo-700 dark:text-indigo-300">No comments yet.</p>
-                          )}
-                          <div className="flex items-start gap-1.5">
-                            <textarea
-                              value={commentDraftByProposalId[proposal.id] || ''}
-                              onChange={(e) =>
-                                setCommentDraftByProposalId((prev) => ({
-                                  ...prev,
-                                  [proposal.id]: e.target.value,
-                                }))
-                              }
-                              rows={2}
-                              placeholder="Add a comment"
-                              className="min-h-[3.5rem] flex-1 rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAddProposalComment(proposal)}
-                              disabled={!(commentDraftByProposalId[proposal.id] || '').trim()}
-                              className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] text-indigo-800 hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200 dark:hover:bg-indigo-900/20"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                        {canEditSelectedProposal ? (
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => handleSaveProposalFlowEdit(proposal)}
-                              disabled={
-                                proposalFlowSavingById[proposal.id] ||
-                                draft.title.trim().length === 0
-                              }
-                              className="rounded bg-indigo-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {proposalFlowSavingById[proposal.id] ? 'Saving...' : 'Save Changes'}
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
-                            View only. You can only edit your own activities.
-                          </p>
-                        )}
-                      </>
+                      <ProposalFlowEditor
+                        selectedEditableProposal={proposal}
+                        proposalFlowEditDrafts={proposalFlowEditDrafts}
+                        userId={userId}
+                        userNameById={userNameById}
+                        updateProposalFlowEditField={updateProposalFlowEditField}
+                        canEditSelectedProposal={canEditSelectedProposal}
+                        editorAlternativeDraftByProposalId={editorAlternativeDraftByProposalId}
+                        updateEditorAlternativeDraftField={updateEditorAlternativeDraftField}
+                        handleSubmitEditorAlternative={handleSubmitEditorAlternative}
+                        commentDraftByProposalId={commentDraftByProposalId}
+                        setCommentDraftByProposalId={setCommentDraftByProposalId}
+                        handleAddProposalComment={handleAddProposalComment}
+                        proposalFlowSavingById={proposalFlowSavingById}
+                        handleSaveProposalFlowEdit={handleSaveProposalFlowEdit}
+                      />
                     );
                   })()}
                 </div>
@@ -2068,33 +1682,33 @@ export function AiAssistantPanel({
             {!showProposalFlowEditorOnly && (
               <div className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex items-center gap-2">
-                {latestProposalFlowActionMessageId &&
-                  latestProposalFlowActionProposal &&
-                  latestProposalFlowDraftValues && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleProposeFromDraft(
-                          latestProposalFlowActionMessageId,
-                          latestProposalFlowActionProposal,
-                          latestProposalFlowDraftValues
-                        )
-                      }
-                      disabled={
-                        executingActionMessageId === latestProposalFlowActionMessageId ||
-                        Boolean(completedActionMessageIds[latestProposalFlowActionMessageId]) ||
-                        latestProposalFlowDraftValues.title.trim().length === 0
-                      }
-                      className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {completedActionMessageIds[latestProposalFlowActionMessageId]
-                        ? 'Confirmed'
-                        : executingActionMessageId === latestProposalFlowActionMessageId
-                          ? 'Confirming...'
-                          : 'Confirm'}
-                    </button>
-                  )}
-                {latestProposalFlowActionMessageId && (
+                  {latestProposalFlowActionMessageId &&
+                    latestProposalFlowActionProposal &&
+                    latestProposalFlowDraftValues && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleProposeFromDraft(
+                            latestProposalFlowActionMessageId,
+                            latestProposalFlowActionProposal,
+                            latestProposalFlowDraftValues
+                          )
+                        }
+                        disabled={
+                          executingActionMessageId === latestProposalFlowActionMessageId ||
+                          Boolean(completedActionMessageIds[latestProposalFlowActionMessageId]) ||
+                          latestProposalFlowDraftValues.title.trim().length === 0
+                        }
+                        className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {completedActionMessageIds[latestProposalFlowActionMessageId]
+                          ? 'Confirmed'
+                          : executingActionMessageId === latestProposalFlowActionMessageId
+                            ? 'Confirming...'
+                            : 'Confirm'}
+                      </button>
+                    )}
+                  {latestProposalFlowActionMessageId && (
                     <button
                       type="button"
                       onClick={() => handleCancelAction(latestProposalFlowActionMessageId)}
@@ -2102,14 +1716,14 @@ export function AiAssistantPanel({
                     >
                       Cancel
                     </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onProposalFlowGoActivities}
-                  className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  Activities
-                </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onProposalFlowGoActivities}
+                    className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Activities
+                  </button>
                 </div>
               </div>
             )}
@@ -2221,14 +1835,12 @@ export function AiAssistantPanel({
                       {participantRows.map((row) => (
                         <span
                           key={`avatar-${row.member.id}`}
-                          title={`${row.member.name}: ${
-                            row.hasAffirmation ? 'subscribed' : 'not subscribed'
-                          }`}
-                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${
-                            row.hasAffirmation
-                              ? 'border-emerald-500 bg-emerald-500 text-white'
-                              : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-                          }`}
+                          title={`${row.member.name}: ${row.hasAffirmation ? 'subscribed' : 'not subscribed'
+                            }`}
+                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${row.hasAffirmation
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                            }`}
                         >
                           {userInitials(row.member.name)}
                           {row.hasAffirmation && (
@@ -2343,184 +1955,46 @@ export function AiAssistantPanel({
                       <div>
                         <span className="font-semibold">Requirements:</span> {requirementsNote}
                       </div>
-                      <div className="space-y-1.5">
-                        <p className="font-semibold">Comments</p>
-                        {(proposal.comments || []).length > 0 ? (
-                          <div className="space-y-1">
-                            {(proposal.comments || []).map((comment) => (
-                              <div
-                                key={`proposal-comment-${comment.id}`}
-                                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
-                              >
-                                <span className="font-medium">
-                                  {userNameById.get(comment.userId) || 'User'}:
-                                </span>{' '}
-                                {comment.text}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-600 dark:text-slate-300">
-                            No comments yet.
+                      <ProposalCommentsSection
+                        proposal={proposal}
+                        userNameById={userNameById}
+                        commentDraftByProposalId={commentDraftByProposalId}
+                        setCommentDraftByProposalId={setCommentDraftByProposalId}
+                        handleAddProposalComment={handleAddProposalComment}
+                        theme="gray"
+                        containerClassName="mt-4"
+                      />
+                      {displayDateChanges.length === 0 &&
+                        displayTimeChanges.length === 0 &&
+                        displayPlaceChanges.length === 0 && (
+                          <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
+                            No alternatives suggested yet.
                           </p>
                         )}
-                        <div className="flex items-start gap-1.5">
-                          <textarea
-                            value={commentDraftByProposalId[proposal.id] || ''}
-                            onChange={(e) =>
-                              setCommentDraftByProposalId((prev) => ({
-                                ...prev,
-                                [proposal.id]: e.target.value,
-                              }))
-                            }
-                            rows={2}
-                            placeholder="Add a comment"
-                            className="min-h-[3.25rem] flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddProposalComment(proposal)}
-                            disabled={!(commentDraftByProposalId[proposal.id] || '').trim()}
-                            className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                      {displayDateChanges.length === 0 &&
-                      displayTimeChanges.length === 0 &&
-                      displayPlaceChanges.length === 0 && (
-                        <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
-                          No alternatives suggested yet.
-                        </p>
-                      )}
                     </div>
 
                     {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
-                      <div className="mt-2 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-slate-200">
-                            Suggest Alternatives
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => closeSuggestAlternativesModal(proposal.id)}
-                            className="rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-700 dark:border-slate-600 dark:text-slate-200"
-                          >
-                            Close
-                          </button>
-                        </div>
-                        <div className={`grid grid-cols-1 gap-2 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                          <input
-                            type="date"
-                            value={proposalCardDrafts[proposal.id]?.startDateSuggestion || ''}
-                            onChange={(e) =>
-                              setProposalCardDrafts((prev) => ({
-                                ...prev,
-                                [proposal.id]: {
-                                  dateSuggestion: formatDateRangeText(
-                                    e.target.value,
-                                    proposal.type === 'sejour'
-                                      ? prev[proposal.id]?.endDateSuggestion || ''
-                                      : e.target.value
-                                  ),
-                                  startDateSuggestion: e.target.value,
-                                  endDateSuggestion:
-                                    proposal.type === 'sejour'
-                                      ? prev[proposal.id]?.endDateSuggestion || ''
-                                      : e.target.value,
-                                  timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
-                                  placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
-                                  isSuggestModalOpen: true,
-                                },
-                              }))
-                            }
-                            aria-label={proposal.type === 'sejour' ? 'Alternative start date' : 'Alternative date'}
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                          />
-                          {proposal.type === 'sejour' && (
-                            <input
-                              type="date"
-                              value={proposalCardDrafts[proposal.id]?.endDateSuggestion || ''}
-                              min={proposalCardDrafts[proposal.id]?.startDateSuggestion || undefined}
-                              onChange={(e) =>
-                                setProposalCardDrafts((prev) => ({
-                                  ...prev,
-                                  [proposal.id]: {
-                                    dateSuggestion: formatDateRangeText(
-                                      prev[proposal.id]?.startDateSuggestion || '',
-                                      e.target.value
-                                    ),
-                                    startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
-                                    endDateSuggestion: e.target.value,
-                                    timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
-                                    placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
-                                    isSuggestModalOpen: true,
-                                  },
-                                }))
-                              }
-                              aria-label="Alternative end date"
-                              className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                            />
-                          )}
-                          <input
-                            type="time"
-                            value={proposalCardDrafts[proposal.id]?.timeSuggestion || ''}
-                            step={900}
-                            onChange={(e) =>
-                              setProposalCardDrafts((prev) => ({
-                                ...prev,
-                                [proposal.id]: {
-                                  dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
-                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
-                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
-                                  timeSuggestion: e.target.value,
-                                  placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
-                                  isSuggestModalOpen: true,
-                                },
-                              }))
-                            }
-                            aria-label="Alternative time"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                          />
-                          <input
-                            type="text"
-                            value={proposalCardDrafts[proposal.id]?.placeSuggestion || ''}
-                            onChange={(e) =>
-                              setProposalCardDrafts((prev) => ({
-                                ...prev,
-                                [proposal.id]: {
-                                  dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
-                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
-                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
-                                  timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
-                                  placeSuggestion: e.target.value,
-                                  isSuggestModalOpen: true,
-                                },
-                              }))
-                            }
-                            placeholder="Place: neighborhood / venue"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                          />
-                        </div>
-                        <div className="mt-2 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => handleSubmitAlternatives(proposal)}
-                            disabled={
-                              !(
-                                proposalCardDrafts[proposal.id]?.startDateSuggestion?.trim() ||
-                                proposalCardDrafts[proposal.id]?.endDateSuggestion?.trim() ||
-                                proposalCardDrafts[proposal.id]?.timeSuggestion?.trim() ||
-                                proposalCardDrafts[proposal.id]?.placeSuggestion?.trim()
-                              )
-                            }
-                            className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                          >
-                            Add Alternatives
-                          </button>
-                        </div>
-                      </div>
+                      <SuggestAlternativesModal
+                        proposal={proposal}
+                        draft={proposalCardDrafts[proposal.id]}
+                        onDraftChange={(updates) =>
+                          setProposalCardDrafts((prev) => ({
+                            ...prev,
+                            [proposal.id]: {
+                              ...(prev[proposal.id] || {
+                                dateSuggestion: '',
+                                startDateSuggestion: '',
+                                endDateSuggestion: '',
+                                timeSuggestion: '',
+                                placeSuggestion: '',
+                              }),
+                              ...updates,
+                            },
+                          }))
+                        }
+                        onSubmit={handleSubmitAlternatives}
+                        onClose={closeSuggestAlternativesModal}
+                      />
                     )}
 
                     <div className="mt-auto pt-2">
@@ -2569,141 +2043,10 @@ export function AiAssistantPanel({
             })}
           </div>
         )}
-        <Modal
-          isOpen={Boolean(calendarPopup)}
+        <CalendarModal
+          calendarPopup={calendarPopup}
           onClose={() => setCalendarPopup(null)}
-          title={calendarPopup ? `${calendarPopup.proposalTitle} calendar` : 'Proposal calendar'}
-        >
-          {calendarPopup &&
-            (() => {
-              const originalDateSet = new Set(calendarPopup.originalDates);
-              const alternativeDateSet = new Set(calendarPopup.alternativeDates);
-              const monthIsos = collectCalendarMonthIsos(
-                calendarPopup.originalDates,
-                calendarPopup.alternativeDates,
-                calendarPopup.anchorMonthIso
-              );
-
-              return (
-                <div className="space-y-4 text-xs">
-                  {monthIsos.map((monthIso) => {
-                    const monthBoundaries = getMonthBoundaries(monthIso);
-                    const originalContinuesFromPreviousMonth =
-                      Boolean(monthBoundaries?.firstDayIso) &&
-                      originalDateSet.has(monthBoundaries!.firstDayIso) &&
-                      originalDateSet.has(shiftIsoDateByDays(monthBoundaries!.firstDayIso, -1) || '');
-                    const originalContinuesToNextMonth =
-                      Boolean(monthBoundaries?.lastDayIso) &&
-                      originalDateSet.has(monthBoundaries!.lastDayIso) &&
-                      originalDateSet.has(shiftIsoDateByDays(monthBoundaries!.lastDayIso, 1) || '');
-                    const alternativeContinuesFromPreviousMonth =
-                      Boolean(monthBoundaries?.firstDayIso) &&
-                      alternativeDateSet.has(monthBoundaries!.firstDayIso) &&
-                      alternativeDateSet.has(shiftIsoDateByDays(monthBoundaries!.firstDayIso, -1) || '');
-                    const alternativeContinuesToNextMonth =
-                      Boolean(monthBoundaries?.lastDayIso) &&
-                      alternativeDateSet.has(monthBoundaries!.lastDayIso) &&
-                      alternativeDateSet.has(shiftIsoDateByDays(monthBoundaries!.lastDayIso, 1) || '');
-
-                    return (
-                      <div key={`calendar-month-${monthIso}`} className="space-y-2">
-                        <p className="text-sm font-semibold text-gray-800 dark:text-slate-100">
-                          {formatIsoMonthLabel(monthIso)}
-                        </p>
-                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-gray-500 dark:text-slate-400">
-                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => (
-                            <div key={`weekday-${monthIso}-${label}`}>{label}</div>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-7 gap-1">
-                          {buildMonthCells(monthIso).map((cell, index) => {
-                            if (!cell.iso || !cell.day) {
-                              return (
-                                <div
-                                  key={`blank-${monthIso}-${index}`}
-                                  className="h-8 rounded-md bg-transparent"
-                                />
-                              );
-                            }
-                            const prevIso = shiftIsoDateByDays(cell.iso, -1);
-                            const nextIso = shiftIsoDateByDays(cell.iso, 1);
-                            const isOriginal = originalDateSet.has(cell.iso);
-                            const isAlternative = alternativeDateSet.has(cell.iso);
-                            const hasPrevOriginal = Boolean(prevIso && originalDateSet.has(prevIso));
-                            const hasNextOriginal = Boolean(nextIso && originalDateSet.has(nextIso));
-                            const hasPrevAlternative = Boolean(prevIso && alternativeDateSet.has(prevIso));
-                            const hasNextAlternative = Boolean(nextIso && alternativeDateSet.has(nextIso));
-
-                            return (
-                              <div
-                                key={`${monthIso}-${cell.iso}`}
-                                className="relative h-8 overflow-hidden rounded-md border border-gray-200 bg-white text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                              >
-                                {isOriginal && (
-                                  <div
-                                    className={`absolute top-1 h-2 bg-sky-300 dark:bg-sky-700 ${
-                                      hasPrevOriginal ? 'left-0' : 'left-0.5 rounded-l-md'
-                                    } ${hasNextOriginal ? 'right-0' : 'right-0.5 rounded-r-md'}`}
-                                  />
-                                )}
-                                {isAlternative && (
-                                  <div
-                                    className={`absolute bottom-1 h-2 bg-amber-300 dark:bg-amber-700 ${
-                                      hasPrevAlternative ? 'left-0' : 'left-0.5 rounded-l-md'
-                                    } ${hasNextAlternative ? 'right-0' : 'right-0.5 rounded-r-md'}`}
-                                  />
-                                )}
-                                <div className="relative z-10 flex h-full items-center justify-center text-[11px] font-medium">
-                                  {cell.day}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {(originalContinuesFromPreviousMonth ||
-                          originalContinuesToNextMonth ||
-                          alternativeContinuesFromPreviousMonth ||
-                          alternativeContinuesToNextMonth) && (
-                          <div className="flex flex-wrap items-center gap-2 text-[10px]">
-                            {originalContinuesFromPreviousMonth && (
-                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200">
-                                Original sejour continues from previous month
-                              </span>
-                            )}
-                            {originalContinuesToNextMonth && (
-                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200">
-                                Original sejour continues to next month
-                              </span>
-                            )}
-                            {alternativeContinuesFromPreviousMonth && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-                                Alternative sejour continues from previous month
-                              </span>
-                            )}
-                            {alternativeContinuesToNextMonth && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-                                Alternative sejour continues to next month
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2.5 w-2.5 rounded-full bg-sky-400 dark:bg-sky-300" />
-                      Original dates (top line)
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400 dark:bg-amber-300" />
-                      Alternative dates (bottom line)
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-        </Modal>
+        />
       </div>
     );
   }
@@ -2797,14 +2140,12 @@ export function AiAssistantPanel({
                       {participantRows.map((row) => (
                         <span
                           key={`avatar-${row.member.id}`}
-                          title={`${row.member.name}: ${
-                            row.hasAffirmation ? 'subscribed' : 'not subscribed'
-                          }`}
-                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${
-                            row.hasAffirmation
-                              ? 'border-emerald-500 bg-emerald-500 text-white'
-                              : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-                          }`}
+                          title={`${row.member.name}: ${row.hasAffirmation ? 'subscribed' : 'not subscribed'
+                            }`}
+                          className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${row.hasAffirmation
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : 'border-gray-300 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                            }`}
                         >
                           {userInitials(row.member.name)}
                           {row.hasAffirmation && (
@@ -2838,40 +2179,40 @@ export function AiAssistantPanel({
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {shouldShowAffirmButton ? (
+                      {shouldShowAffirmButton ? (
+                        <button
+                          type="button"
+                          onClick={() => handleAffirmAvailabilityAsProposed(proposal)}
+                          className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                        >
+                          I&apos;m available as proposed
+                        </button>
+                      ) : (
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
+                          You&apos;re in
+                        </span>
+                      )}
+
                       <button
                         type="button"
-                        onClick={() => handleAffirmAvailabilityAsProposed(proposal)}
-                        className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                        onClick={() => openSuggestAlternativesModal(proposal.id)}
+                        className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
-                        I&apos;m available as proposed
+                        Suggest Alternatives
                       </button>
-                    ) : (
-                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
-                        You&apos;re in
-                      </span>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => openSuggestAlternativesModal(proposal.id)}
-                      className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      Suggest Alternatives
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleGenerateProposalThumbnail(proposal)}
-                      disabled={!canGenerateProposalThumbnail() || thumbnailBusy}
-                      className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      title={
-                        canGenerateProposalThumbnail()
-                          ? 'Generate thumbnail image'
-                          : 'Set VITE_THUMBNAIL_OPENROUTER_API_KEY (or VITE_OPENROUTER_API_KEY) to enable thumbnail generation'
-                      }
-                    >
-                      {thumbnailBusy ? 'Generating thumbnail...' : 'Generate Thumbnail'}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateProposalThumbnail(proposal)}
+                        disabled={!canGenerateProposalThumbnail() || thumbnailBusy}
+                        className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        title={
+                          canGenerateProposalThumbnail()
+                            ? 'Generate thumbnail image'
+                            : 'Set VITE_THUMBNAIL_OPENROUTER_API_KEY (or VITE_OPENROUTER_API_KEY) to enable thumbnail generation'
+                        }
+                      >
+                        {thumbnailBusy ? 'Generating thumbnail...' : 'Generate Thumbnail'}
+                      </button>
                     </div>
                     {thumbnailError && (
                       <p className="mt-2 text-[11px] text-red-700 dark:text-red-300">{thumbnailError}</p>
@@ -2902,11 +2243,10 @@ export function AiAssistantPanel({
                           {participantRows.map((row) => (
                             <span
                               key={row.member.id}
-                              className={`rounded-full border px-2 py-1 text-[11px] ${
-                                row.member.id === userId
-                                  ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200'
-                                  : 'border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
-                              }`}
+                              className={`rounded-full border px-2 py-1 text-[11px] ${row.member.id === userId
+                                ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200'
+                                : 'border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                                }`}
                             >
                               {row.member.name}
                               {row.hasDateDelta
@@ -2950,130 +2290,27 @@ export function AiAssistantPanel({
                     </div>
 
                     {proposalCardDrafts[proposal.id]?.isSuggestModalOpen && (
-                      <div className="mt-2 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-slate-200">
-                            Suggest Alternatives
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => closeSuggestAlternativesModal(proposal.id)}
-                            className="rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-700 dark:border-slate-600 dark:text-slate-200"
-                          >
-                            Close
-                          </button>
-                        </div>
-                        <div className={`grid grid-cols-1 gap-2 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                          <input
-                            type="date"
-                            value={proposalCardDrafts[proposal.id]?.startDateSuggestion || ''}
-                            onChange={(e) =>
-                              setProposalCardDrafts((prev) => ({
-                                ...prev,
-                                [proposal.id]: {
-                                  dateSuggestion: formatDateRangeText(
-                                    e.target.value,
-                                    proposal.type === 'sejour'
-                                      ? prev[proposal.id]?.endDateSuggestion || ''
-                                      : e.target.value
-                                  ),
-                                  startDateSuggestion: e.target.value,
-                                  endDateSuggestion:
-                                    proposal.type === 'sejour'
-                                      ? prev[proposal.id]?.endDateSuggestion || ''
-                                      : e.target.value,
-                                  timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
-                                  placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
-                                  isSuggestModalOpen: true,
-                                },
-                              }))
-                            }
-                            aria-label={proposal.type === 'sejour' ? 'Alternative start date' : 'Alternative date'}
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                          />
-                          {proposal.type === 'sejour' && (
-                            <input
-                              type="date"
-                              value={proposalCardDrafts[proposal.id]?.endDateSuggestion || ''}
-                              min={proposalCardDrafts[proposal.id]?.startDateSuggestion || undefined}
-                              onChange={(e) =>
-                                setProposalCardDrafts((prev) => ({
-                                  ...prev,
-                                  [proposal.id]: {
-                                    dateSuggestion: formatDateRangeText(
-                                      prev[proposal.id]?.startDateSuggestion || '',
-                                      e.target.value
-                                    ),
-                                    startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
-                                    endDateSuggestion: e.target.value,
-                                    timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
-                                    placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
-                                    isSuggestModalOpen: true,
-                                  },
-                                }))
-                              }
-                              aria-label="Alternative end date"
-                              className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                            />
-                          )}
-                          <input
-                            type="time"
-                            value={proposalCardDrafts[proposal.id]?.timeSuggestion || ''}
-                            step={900}
-                            onChange={(e) =>
-                              setProposalCardDrafts((prev) => ({
-                                ...prev,
-                                [proposal.id]: {
-                                  dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
-                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
-                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
-                                  timeSuggestion: e.target.value,
-                                  placeSuggestion: prev[proposal.id]?.placeSuggestion || '',
-                                  isSuggestModalOpen: true,
-                                },
-                              }))
-                            }
-                            aria-label="Alternative time"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                          />
-                          <input
-                            type="text"
-                            value={proposalCardDrafts[proposal.id]?.placeSuggestion || ''}
-                            onChange={(e) =>
-                              setProposalCardDrafts((prev) => ({
-                                ...prev,
-                                [proposal.id]: {
-                                  dateSuggestion: prev[proposal.id]?.dateSuggestion || '',
-                                  startDateSuggestion: prev[proposal.id]?.startDateSuggestion || '',
-                                  endDateSuggestion: prev[proposal.id]?.endDateSuggestion || '',
-                                  timeSuggestion: prev[proposal.id]?.timeSuggestion || '',
-                                  placeSuggestion: e.target.value,
-                                  isSuggestModalOpen: true,
-                                },
-                              }))
-                            }
-                            placeholder="Place: neighborhood / venue"
-                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                          />
-                        </div>
-                        <div className="mt-2 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => handleSubmitAlternatives(proposal)}
-                            disabled={
-                              !(
-                                proposalCardDrafts[proposal.id]?.startDateSuggestion?.trim() ||
-                                proposalCardDrafts[proposal.id]?.endDateSuggestion?.trim() ||
-                                proposalCardDrafts[proposal.id]?.timeSuggestion?.trim() ||
-                                proposalCardDrafts[proposal.id]?.placeSuggestion?.trim()
-                              )
-                            }
-                            className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                          >
-                            Add Alternatives
-                          </button>
-                        </div>
-                      </div>
+                      <SuggestAlternativesModal
+                        proposal={proposal}
+                        draft={proposalCardDrafts[proposal.id]}
+                        onDraftChange={(updates) =>
+                          setProposalCardDrafts((prev) => ({
+                            ...prev,
+                            [proposal.id]: {
+                              ...(prev[proposal.id] || {
+                                dateSuggestion: '',
+                                startDateSuggestion: '',
+                                endDateSuggestion: '',
+                                timeSuggestion: '',
+                                placeSuggestion: '',
+                              }),
+                              ...updates,
+                            },
+                          }))
+                        }
+                        onSubmit={handleSubmitAlternatives}
+                        onClose={closeSuggestAlternativesModal}
+                      />
                     )}
                   </div>
                 </div>
@@ -3087,11 +2324,10 @@ export function AiAssistantPanel({
         {messages.map((message) => (
           <div key={message.id} className="space-y-2">
             <div
-              className={`rounded px-3 py-2 text-sm ${
-                message.role === 'user'
-                  ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
-                  : 'bg-white text-gray-800 dark:bg-slate-900 dark:text-slate-100 border border-gray-200 dark:border-slate-700'
-              }`}
+              className={`rounded px-3 py-2 text-sm ${message.role === 'user'
+                ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
+                : 'bg-white text-gray-800 dark:bg-slate-900 dark:text-slate-100 border border-gray-200 dark:border-slate-700'
+                }`}
             >
               <div className="text-[10px] uppercase tracking-wide opacity-70">
                 {message.role === 'assistant' ? 'Snooky' : message.role}
@@ -3134,7 +2370,7 @@ export function AiAssistantPanel({
                     </div>
                   )}
                 </>
-            )}
+              )}
           </div>
         ))}
       </div>
@@ -3274,74 +2510,7 @@ export function AiAssistantPanel({
           </p>
         )}
         {showMemoryExplorer && (
-            <div className="mt-3 rounded border border-emerald-200 bg-white p-3 dark:border-emerald-900/50 dark:bg-slate-900">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
-                  Memory Explorer
-                </p>
-                <p className="text-[11px] text-gray-600 dark:text-slate-300">
-                  v1 in-panel view
-                </p>
-              </div>
-              <div className="mb-3 flex flex-wrap gap-2">
-                <label className="text-[11px] text-gray-700 dark:text-slate-200">
-                  Status
-                  <select
-                    value={memoryStatusFilter}
-                    onChange={(e) => setMemoryStatusFilter(e.target.value as MemoryStatusFilter)}
-                    className="ml-1 rounded border border-gray-300 bg-white px-1.5 py-1 text-[11px] text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                  >
-                    <option value="all">All</option>
-                    <option value="reported">Reported</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="inferred">Inferred</option>
-                    <option value="needs_confirmation">Needs confirmation</option>
-                    <option value="contradicted">Contradicted</option>
-                  </select>
-                </label>
-                <label className="text-[11px] text-gray-700 dark:text-slate-200">
-                  Type
-                  <select
-                    value={memoryTypeFilter}
-                    onChange={(e) => setMemoryTypeFilter(e.target.value as MemoryTypeFilter)}
-                    className="ml-1 rounded border border-gray-300 bg-white px-1.5 py-1 text-[11px] text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                  >
-                    <option value="all">All</option>
-                    <option value="availability_">Availability only</option>
-                  </select>
-                </label>
-              </div>
-              <div className="max-h-60 space-y-2 overflow-y-auto">
-                {allMemoryRecords.length === 0 ? (
-                  <p className="text-xs text-gray-600 dark:text-slate-300">No memory records match the current filters.</p>
-                ) : (
-                  allMemoryRecords.map((record) => (
-                    <div
-                      key={`explorer-${record.id}`}
-                      className="rounded border border-gray-200 bg-gray-50 px-2 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
-                    >
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] dark:bg-slate-800">
-                          {record.status}
-                        </span>
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] dark:bg-slate-800">
-                          {record.factType}
-                        </span>
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] dark:bg-slate-800">
-                          {typeof record.value.seedProfile === 'string'
-                            ? String(record.value.seedProfile)
-                            : `user ${record.scopeId}`}
-                        </span>
-                        <span className="text-[10px] text-gray-500 dark:text-slate-400">
-                          {new Date(record.observedAt).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-gray-700 dark:text-slate-200">{summarizeMemoryRecord(record)}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+          <MemoryExplorer activeGroupId={activeGroupId} summarizeMemoryRecord={summarizeMemoryRecord} />
         )}
       </div>
 
