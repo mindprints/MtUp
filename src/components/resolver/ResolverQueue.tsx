@@ -37,7 +37,7 @@ export function ResolverQueue({
   alternativeCountByProposalId,
 }: ResolverQueueProps) {
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-stone-50 dark:border-slate-700 dark:bg-slate-950">
+    <aside className="flex min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-stone-50 dark:border-slate-700 dark:bg-slate-950">
       <div className="border-b border-gray-200 px-4 py-3 dark:border-slate-700">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Resolver</h2>
         <p className="mt-1 text-xs text-gray-600 dark:text-slate-400">
@@ -73,7 +73,10 @@ export function ResolverQueue({
         </label>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div
+        data-screen-scroll-root="true"
+        className="hide-scrollbar min-h-0 flex-1 overflow-y-auto p-3"
+      >
         {proposals.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             No proposals match the current filters.
@@ -125,7 +128,7 @@ export function ResolverQueue({
                     {creatorName}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600 dark:text-slate-400">
-                    <span>{commentCountByProposalId[proposal.id] || 0} comments</span>
+                    <span>{commentCountByProposalId[proposal.id] || 0} notes</span>
                     <span>{alternativeCountByProposalId[proposal.id] || 0} alternatives</span>
                   </div>
                 </button>

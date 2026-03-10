@@ -7,6 +7,9 @@
 - `docs/supabase/004_rls_isolation_verification.sql`
 - `docs/supabase/005_rls_hotfix_group_memberships_recursion.sql`
 - `docs/supabase/006_proposal_authorship_split.sql`
+- `docs/supabase/007_admin_membership_functions.sql`
+- `docs/supabase/008_proposal_contributions.sql`
+- `docs/supabase/009_admin_availability_seed.sql`
 
 ## Usage
 1. Create a Supabase project.
@@ -19,6 +22,9 @@
 8. Run file 004 as different users to validate RLS visibility boundaries.
 9. If you see `stack depth limit exceeded (54001)` on `group_memberships`, run file 005.
 10. Run file 006 to split proposal authorship (`authored_by`) from row ownership (`created_by`) before using Resolver-created variants in Supabase mode.
+11. Run file 007 to restore full admin membership CRUD and non-recursive member listing in Supabase mode.
+12. Run file 008 to persist proposal alternatives and affirmations across sessions in Supabase mode.
+13. Run file 009 to allow admin-only mock availability seeding in Supabase mode.
 
 ## Notes
 - Schema is intentionally group-aware even while UI remains single-group.

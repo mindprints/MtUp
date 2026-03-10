@@ -1,0 +1,329 @@
+- generic [ref=e25]:
+  - banner [ref=e26]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - heading "Snookey's Here to Help." [level=1] [ref=e30]
+        - paragraph [ref=e31]: Welcome, Alice (Admin)
+      - generic [ref=e32]:
+        - group [ref=e33]:
+          - generic "Instructions" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Light
+          - checkbox "Toggle dark mode" [ref=e38]
+        - button "Sign out" [ref=e41] [cursor=pointer]
+  - main [ref=e42]:
+    - generic [ref=e44]:
+      - generic [ref=e46]: 09:41
+      - generic [ref=e52]:
+        - generic [ref=e54]:
+          - button "Admin" [ref=e55] [cursor=pointer]
+          - button "Resolver" [active] [ref=e56] [cursor=pointer]
+          - button "Snooky" [ref=e57] [cursor=pointer]
+        - generic [ref=e62]:
+          - complementary [ref=e63]:
+            - generic [ref=e64]:
+              - heading "Resolver" [level=2] [ref=e65]
+              - paragraph [ref=e66]: Review proposals before they are finalized.
+            - generic [ref=e67]:
+              - generic [ref=e68]:
+                - button "All" [ref=e69] [cursor=pointer]
+                - button "Events" [ref=e70] [cursor=pointer]
+                - button "Sejours" [ref=e71] [cursor=pointer]
+                - button "Mine" [ref=e72] [cursor=pointer]
+              - generic [ref=e73]:
+                - checkbox "Show confirmed" [ref=e74]
+                - text: Show confirmed
+            - generic [ref=e76]:
+              - button "🎉 Coffee break event proposed Mine 0 comments 0 alternatives" [ref=e77] [cursor=pointer]:
+                - generic [ref=e78]:
+                  - generic [ref=e79]: 🎉
+                  - generic [ref=e80]:
+                    - generic [ref=e81]: Coffee break
+                    - generic [ref=e82]:
+                      - generic [ref=e83]: event
+                      - generic [ref=e84]: proposed
+                - generic [ref=e85]: Mine
+                - generic [ref=e86]:
+                  - generic [ref=e87]: 0 comments
+                  - generic [ref=e88]: 0 alternatives
+              - button "🎉 Weekend in Paris sejour proposed Mine 0 comments 0 alternatives" [ref=e89] [cursor=pointer]:
+                - generic [ref=e90]:
+                  - generic [ref=e91]: 🎉
+                  - generic [ref=e92]:
+                    - generic [ref=e93]: Weekend in Paris
+                    - generic [ref=e94]:
+                      - generic [ref=e95]: sejour
+                      - generic [ref=e96]: proposed
+                - generic [ref=e97]: Mine
+                - generic [ref=e98]:
+                  - generic [ref=e99]: 0 comments
+                  - generic [ref=e100]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834535513 event proposed Mine 0 comments 0 alternatives" [ref=e101] [cursor=pointer]:
+                - generic [ref=e102]:
+                  - generic [ref=e103]: 🎲
+                  - generic [ref=e104]:
+                    - generic [ref=e105]: Resolver Variant E2E 1772834535513
+                    - generic [ref=e106]:
+                      - generic [ref=e107]: event
+                      - generic [ref=e108]: proposed
+                - generic [ref=e109]: Mine
+                - generic [ref=e110]:
+                  - generic [ref=e111]: 0 comments
+                  - generic [ref=e112]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834535513 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e113] [cursor=pointer]:
+                - generic [ref=e114]:
+                  - generic [ref=e115]: 🎲
+                  - generic [ref=e116]:
+                    - generic [ref=e117]: Resolver Variant E2E 1772834535513 (Variant A)
+                    - generic [ref=e118]:
+                      - generic [ref=e119]: event
+                      - generic [ref=e120]: proposed
+                      - generic [ref=e121]: Variant A
+                - generic [ref=e122]: Mine
+                - generic [ref=e123]:
+                  - generic [ref=e124]: 0 comments
+                  - generic [ref=e125]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834535513 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e126] [cursor=pointer]:
+                - generic [ref=e127]:
+                  - generic [ref=e128]: 🎲
+                  - generic [ref=e129]:
+                    - generic [ref=e130]: Resolver Variant E2E 1772834535513 (Variant B)
+                    - generic [ref=e131]:
+                      - generic [ref=e132]: event
+                      - generic [ref=e133]: proposed
+                      - generic [ref=e134]: Variant B
+                - generic [ref=e135]: Mine
+                - generic [ref=e136]:
+                  - generic [ref=e137]: 0 comments
+                  - generic [ref=e138]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834897319 event proposed Mine 0 comments 0 alternatives" [ref=e139] [cursor=pointer]:
+                - generic [ref=e140]:
+                  - generic [ref=e141]: 🎲
+                  - generic [ref=e142]:
+                    - generic [ref=e143]: Resolver Variant E2E 1772834897319
+                    - generic [ref=e144]:
+                      - generic [ref=e145]: event
+                      - generic [ref=e146]: proposed
+                - generic [ref=e147]: Mine
+                - generic [ref=e148]:
+                  - generic [ref=e149]: 0 comments
+                  - generic [ref=e150]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834897319 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e151] [cursor=pointer]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]: 🎲
+                  - generic [ref=e154]:
+                    - generic [ref=e155]: Resolver Variant E2E 1772834897319 (Variant A)
+                    - generic [ref=e156]:
+                      - generic [ref=e157]: event
+                      - generic [ref=e158]: proposed
+                      - generic [ref=e159]: Variant A
+                - generic [ref=e160]: Mine
+                - generic [ref=e161]:
+                  - generic [ref=e162]: 0 comments
+                  - generic [ref=e163]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834897319 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e164] [cursor=pointer]:
+                - generic [ref=e165]:
+                  - generic [ref=e166]: 🎲
+                  - generic [ref=e167]:
+                    - generic [ref=e168]: Resolver Variant E2E 1772834897319 (Variant B)
+                    - generic [ref=e169]:
+                      - generic [ref=e170]: event
+                      - generic [ref=e171]: proposed
+                      - generic [ref=e172]: Variant B
+                - generic [ref=e173]: Mine
+                - generic [ref=e174]:
+                  - generic [ref=e175]: 0 comments
+                  - generic [ref=e176]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772835494264 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e177] [cursor=pointer]:
+                - generic [ref=e178]:
+                  - generic [ref=e179]: 🎲
+                  - generic [ref=e180]:
+                    - generic [ref=e181]: Resolver Variant E2E 1772835494264 (Variant B)
+                    - generic [ref=e182]:
+                      - generic [ref=e183]: event
+                      - generic [ref=e184]: proposed
+                      - generic [ref=e185]: Variant B
+                - generic [ref=e186]: Mine
+                - generic [ref=e187]:
+                  - generic [ref=e188]: 0 comments
+                  - generic [ref=e189]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772835494264 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e190] [cursor=pointer]:
+                - generic [ref=e191]:
+                  - generic [ref=e192]: 🎲
+                  - generic [ref=e193]:
+                    - generic [ref=e194]: Resolver Variant E2E 1772835494264 (Variant A)
+                    - generic [ref=e195]:
+                      - generic [ref=e196]: event
+                      - generic [ref=e197]: proposed
+                      - generic [ref=e198]: Variant A
+                - generic [ref=e199]: Mine
+                - generic [ref=e200]:
+                  - generic [ref=e201]: 0 comments
+                  - generic [ref=e202]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772835494264 event proposed Mine 0 comments 0 alternatives" [ref=e203] [cursor=pointer]:
+                - generic [ref=e204]:
+                  - generic [ref=e205]: 🎲
+                  - generic [ref=e206]:
+                    - generic [ref=e207]: Resolver Variant E2E 1772835494264
+                    - generic [ref=e208]:
+                      - generic [ref=e209]: event
+                      - generic [ref=e210]: proposed
+                - generic [ref=e211]: Mine
+                - generic [ref=e212]:
+                  - generic [ref=e213]: 0 comments
+                  - generic [ref=e214]: 0 alternatives
+          - generic [ref=e216]:
+            - generic [ref=e217]:
+              - generic [ref=e218]:
+                - generic [ref=e219]: 🎉
+                - generic [ref=e220]:
+                  - generic [ref=e221]: Coffee break
+                  - generic [ref=e222]:
+                    - generic [ref=e223]: event
+                    - generic [ref=e224]: proposed
+                  - generic [ref=e225]: Created by Alice
+              - generic [ref=e226]:
+                - generic [ref=e227]:
+                  - generic [ref=e228]: Date
+                  - generic [ref=e229]: 2026-03-06
+                - generic [ref=e230]:
+                  - generic [ref=e231]: Time
+                  - generic [ref=e232]: Not set
+                - generic [ref=e233]:
+                  - generic [ref=e234]: Place
+                  - generic [ref=e235]: Not set
+                - generic [ref=e236]:
+                  - generic [ref=e237]: Requirements
+                  - generic [ref=e238]: Not set
+              - generic [ref=e239]:
+                - generic [ref=e240]: 0 alternatives
+                - generic [ref=e241]: 0 comments
+            - generic [ref=e242]:
+              - generic [ref=e243]:
+                - generic [ref=e244]:
+                  - heading "Resolver Actions" [level=3] [ref=e245]
+                  - paragraph [ref=e246]: Lock the current majority picks or fork the strongest unresolved paths into capped proposal variants.
+                - generic [ref=e247]:
+                  - button "Create Variants" [disabled] [ref=e248]
+                  - button "Lock In Majority" [disabled] [ref=e249]
+              - generic [ref=e250]:
+                - generic [ref=e251]:
+                  - generic [ref=e252]: time
+                  - generic [ref=e253]: No majority pick yet
+                  - generic [ref=e254]: No signal yet • 0 options, 0 votes
+                - generic [ref=e255]:
+                  - generic [ref=e256]: place
+                  - generic [ref=e257]: No majority pick yet
+                  - generic [ref=e258]: No signal yet • 0 options, 0 votes
+                - generic [ref=e259]:
+                  - generic [ref=e260]: requirement
+                  - generic [ref=e261]: No majority pick yet
+                  - generic [ref=e262]: No signal yet • 0 options, 0 votes
+              - generic [ref=e264]:
+                - generic [ref=e265]:
+                  - generic [ref=e266]: Variant Preview
+                  - generic [ref=e267]: No variant fork available yet
+                - generic [ref=e268]: Need at least one unresolved dimension with two viable options.
+            - generic [ref=e269]:
+              - generic [ref=e270]:
+                - heading "Alternatives" [level=3] [ref=e271]
+                - paragraph [ref=e272]: Suggestions collected from proposal discussion history.
+              - paragraph [ref=e273]: No alternatives suggested yet.
+            - generic [ref=e274]:
+              - generic [ref=e275]:
+                - heading "Availability" [level=3] [ref=e276]
+                - paragraph [ref=e277]: Who has marked availability for this event.
+              - generic [ref=e278]:
+                - generic [ref=e279]:
+                  - generic [ref=e280]: Baseline date
+                  - generic [ref=e281]: 2026-03-06
+                - generic [ref=e282]:
+                  - generic [ref=e283]: Participants
+                  - generic [ref=e284]: "1"
+                - generic [ref=e285]:
+                  - generic [ref=e286]: Marked dates
+                  - generic [ref=e287]: "2"
+              - generic [ref=e289]: Alice
+            - generic [ref=e290]:
+              - generic [ref=e291]:
+                - heading "Time" [level=3] [ref=e292]
+                - generic [ref=e293]: open
+              - generic [ref=e294]:
+                - generic [ref=e296]:
+                  - generic [ref=e297]:
+                    - paragraph [ref=e298]: No signal yet
+                    - paragraph [ref=e299]: Waiting for votes to establish a leading option.
+                  - generic [ref=e301]: 0 votes
+                - generic [ref=e303]:
+                  - generic [ref=e304]: "Voting mode:"
+                  - combobox [ref=e305]:
+                    - option "Single choice" [selected]
+                    - option "Multi choice"
+                    - option "Ranked choice"
+                - generic [ref=e306]:
+                  - textbox "Add time option" [ref=e307]
+                  - button "Add" [ref=e308] [cursor=pointer]
+                - paragraph [ref=e310]: No options yet for this dimension.
+                - generic [ref=e311]:
+                  - paragraph [ref=e312]: Confirmation
+                  - generic [ref=e313]:
+                    - textbox "Optional confirmation note" [ref=e314]
+                    - button "Confirm Selection" [disabled] [ref=e315]
+            - generic [ref=e316]:
+              - generic [ref=e317]:
+                - heading "Place" [level=3] [ref=e318]
+                - generic [ref=e319]: open
+              - generic [ref=e320]:
+                - generic [ref=e322]:
+                  - generic [ref=e323]:
+                    - paragraph [ref=e324]: No signal yet
+                    - paragraph [ref=e325]: Waiting for votes to establish a leading option.
+                  - generic [ref=e327]: 0 votes
+                - generic [ref=e329]:
+                  - generic [ref=e330]: "Voting mode:"
+                  - combobox [ref=e331]:
+                    - option "Single choice" [selected]
+                    - option "Multi choice"
+                    - option "Ranked choice"
+                - generic [ref=e332]:
+                  - textbox "Add place option" [ref=e333]
+                  - button "Add" [ref=e334] [cursor=pointer]
+                - paragraph [ref=e336]: No options yet for this dimension.
+                - generic [ref=e337]:
+                  - paragraph [ref=e338]: Confirmation
+                  - generic [ref=e339]:
+                    - textbox "Optional confirmation note" [ref=e340]
+                    - button "Confirm Selection" [disabled] [ref=e341]
+            - generic [ref=e342]:
+              - generic [ref=e343]:
+                - heading "Requirements" [level=3] [ref=e344]
+                - generic [ref=e345]: open
+              - generic [ref=e346]:
+                - generic [ref=e348]:
+                  - generic [ref=e349]:
+                    - paragraph [ref=e350]: No signal yet
+                    - paragraph [ref=e351]: Waiting for votes to establish a leading option.
+                  - generic [ref=e353]: 0 votes
+                - generic [ref=e355]:
+                  - generic [ref=e356]: "Voting mode:"
+                  - combobox [ref=e357]:
+                    - option "Single choice"
+                    - option "Multi choice" [selected]
+                    - option "Ranked choice"
+                - generic [ref=e358]:
+                  - textbox "Add requirement option" [ref=e359]
+                  - button "Add" [ref=e360] [cursor=pointer]
+                - paragraph [ref=e362]: No options yet for this dimension.
+                - generic [ref=e363]:
+                  - paragraph [ref=e364]: Confirmation
+                  - generic [ref=e365]:
+                    - textbox "Optional confirmation note" [ref=e366]
+                    - button "Confirm Selection" [disabled] [ref=e367]
+            - generic [ref=e368]:
+              - generic [ref=e369]:
+                - heading "Comments" [level=3] [ref=e370]
+                - paragraph [ref=e371]: Shared notes for moving the proposal toward consensus.
+              - paragraph [ref=e373]: No comments yet.
+              - generic [ref=e374]:
+                - textbox "Add a comment" [ref=e375]
+                - button "Add" [disabled] [ref=e376]

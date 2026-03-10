@@ -1,5 +1,10 @@
 import type { Proposal } from '@/types';
-import { ProposalCardDrafts, formatDateRangeText } from '@/components/ai-assistant/shared';
+import {
+    ProposalCardDrafts,
+    QuarterHourTimeSelect,
+    SejourDateTimeRow,
+    formatDateRangeText,
+} from '@/components/ai-assistant/shared';
 
 type SuggestAlternativesModalProps = {
     proposal: Proposal;
@@ -30,57 +35,87 @@ export function SuggestAlternativesModal({
                     Close
                 </button>
             </div>
-            <div className={`grid grid-cols-1 gap-2 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                <input
-                    type="date"
-                    value={draft?.startDateSuggestion || ''}
-                    onChange={(e) =>
-                        onDraftChange({
-                            dateSuggestion: formatDateRangeText(
-                                e.target.value,
-                                proposal.type === 'sejour' ? draft?.endDateSuggestion || '' : e.target.value
-                            ),
-                            startDateSuggestion: e.target.value,
-                            endDateSuggestion: proposal.type === 'sejour' ? draft?.endDateSuggestion || '' : e.target.value,
-                            isSuggestModalOpen: true,
-                        })
-                    }
-                    aria-label={proposal.type === 'sejour' ? 'Alternative start date' : 'Alternative date'}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                />
-                {proposal.type === 'sejour' && (
-                    <input
-                        type="date"
-                        value={draft?.endDateSuggestion || ''}
-                        min={draft?.startDateSuggestion || undefined}
-                        onChange={(e) =>
+            <div className={`grid grid-cols-1 gap-2 ${proposal.type === 'sejour' ? '' : 'md:grid-cols-3'}`}>
+                {proposal.type === 'sejour' ? (
+                    <SejourDateTimeRow
+                        startDate={draft?.startDateSuggestion || ''}
+                        endDate={draft?.endDateSuggestion || ''}
+                        startTime={draft?.startTimeSuggestion || ''}
+                        endTime={draft?.endTimeSuggestion || ''}
+                        onStartDateChange={(value) =>
                             onDraftChange({
                                 dateSuggestion: formatDateRangeText(
-                                    draft?.startDateSuggestion || '',
-                                    e.target.value
+                                    value,
+                                    draft?.endDateSuggestion || ''
                                 ),
-                                startDateSuggestion: draft?.startDateSuggestion || '',
-                                endDateSuggestion: e.target.value,
+                                startDateSuggestion: value,
+                                endDateSuggestion: draft?.endDateSuggestion || '',
                                 isSuggestModalOpen: true,
                             })
                         }
-                        aria-label="Alternative end date"
-                        className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                        onEndDateChange={(value) =>
+                            onDraftChange({
+                                dateSuggestion: formatDateRangeText(
+                                    draft?.startDateSuggestion || '',
+                                    value
+                                ),
+                                startDateSuggestion: draft?.startDateSuggestion || '',
+                                endDateSuggestion: value,
+                                isSuggestModalOpen: true,
+                            })
+                        }
+                        onStartTimeChange={(value) =>
+                            onDraftChange({
+                                startTimeSuggestion: value,
+                                isSuggestModalOpen: true,
+                            })
+                        }
+                        onEndTimeChange={(value) =>
+                            onDraftChange({
+                                endTimeSuggestion: value,
+                                isSuggestModalOpen: true,
+                            })
+                        }
+                        startDateLabel="Start Date"
+                        startTimeLabel="Start Time"
+                        endDateLabel="End Date"
+                        endTimeLabel="End Time"
+                        startDateAriaLabel="Alternative start date"
+                        startTimeAriaLabel="Alternative start time"
+                        endDateAriaLabel="Alternative end date"
+                        endTimeAriaLabel="Alternative end time"
+                        dateInputClassName="w-full rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                        timeSelectClassName="w-full rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
                     />
+                ) : (
+                    <>
+                        <input
+                            type="date"
+                            value={draft?.startDateSuggestion || ''}
+                            onChange={(e) =>
+                                onDraftChange({
+                                    dateSuggestion: formatDateRangeText(e.target.value, e.target.value),
+                                    startDateSuggestion: e.target.value,
+                                    endDateSuggestion: e.target.value,
+                                    isSuggestModalOpen: true,
+                                })
+                            }
+                            aria-label="Alternative date"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                        />
+                        <QuarterHourTimeSelect
+                            value={draft?.timeSuggestion || ''}
+                            onChange={(value) =>
+                                onDraftChange({
+                                    timeSuggestion: value,
+                                    isSuggestModalOpen: true,
+                                })
+                            }
+                            ariaLabel="Alternative time"
+                            className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                        />
+                    </>
                 )}
-                <input
-                    type="time"
-                    value={draft?.timeSuggestion || ''}
-                    step={900}
-                    onChange={(e) =>
-                        onDraftChange({
-                            timeSuggestion: e.target.value,
-                            isSuggestModalOpen: true,
-                        })
-                    }
-                    aria-label="Alternative time"
-                    className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                />
                 <input
                     type="text"
                     value={draft?.placeSuggestion || ''}
@@ -103,6 +138,8 @@ export function SuggestAlternativesModal({
                             draft?.startDateSuggestion?.trim() ||
                             draft?.endDateSuggestion?.trim() ||
                             draft?.timeSuggestion?.trim() ||
+                            draft?.startTimeSuggestion?.trim() ||
+                            draft?.endTimeSuggestion?.trim() ||
                             draft?.placeSuggestion?.trim()
                         )
                     }

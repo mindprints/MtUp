@@ -10,20 +10,31 @@ import {
 } from '@/lib/thumbnailGenerator';
 import { useProposals } from '@/lib/ProposalContext';
 import { generateId } from '@/lib/utils';
-import type { AiActionProposal, AiMessage, Availability, MemoryRecord, Proposal } from '@/types';
+import type {
+  AiActionProposal,
+  AiMessage,
+  AiProposalDraft,
+  Availability,
+  MemoryRecord,
+  Proposal,
+} from '@/types';
 import { AiProposalFormCard, type AiProposalFormValues } from '@/components/AiProposalFormCard';
 import { MemoryExplorer } from '@/components/ai-assistant/MemoryExplorer';
 import { CalendarModal, type CalendarPopupState } from '@/components/ai-assistant/CalendarModal';
-import { ProposalFlowEditor } from '@/components/ai-assistant/ProposalFlowEditor';
 import { ProposalCard } from '@/components/ai-assistant/ProposalCard';
 import {
   ProposalCardDrafts,
-  ProposalFlowEditDraft,
+  SejourDateTimeRow,
+  formatSejourTimeText,
+  getProposalEndTime,
+  getProposalStartTime,
   parseIsoDatesFromText,
   parseDateRangeFromText,
+  parseSejourTimeText,
   formatDateRangeText,
   formatTo24HourTimeText,
-  buildProposalFlowEditDraft,
+  normalizeTimeInputValue,
+  QuarterHourTimeSelect,
 } from '@/components/ai-assistant/shared';
 
 type AiAssistantPanelProps = {
@@ -41,6 +52,8 @@ type ProposalFlowAlternativeDraft = {
   startDate: string;
   endDate: string;
   time: string;
+  startTime: string;
+  endTime: string;
   place: string;
 };
 
@@ -50,6 +63,79 @@ type PendingAlternativeSuggestion = {
   timeText: string;
   placeText: string;
 };
+
+const EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT: ProposalFlowAlternativeDraft = {
+  startDate: '',
+  endDate: '',
+  time: '',
+  startTime: '',
+  endTime: '',
+  place: '',
+};
+
+function getActionProposalDrafts(proposal: AiActionProposal): AiProposalDraft[] {
+  const drafts = proposal.payload?.proposalDrafts;
+  if (Array.isArray(drafts) && drafts.length > 0) {
+    return drafts;
+  }
+  const draft = proposal.payload?.proposalDraft;
+  return draft ? [draft] : [];
+}
+
+function getScopedDraftKey(messageId: string, draftId: string): string {
+  return `${messageId}:${draftId}`;
+}
+
+function getScopedActionProposal(
+  proposal: AiActionProposal,
+  draft: AiProposalDraft,
+  draftCount: number
+): AiActionProposal {
+  return {
+    ...proposal,
+    summary: draftCount > 1 ? `Propose ${draft.title}` : proposal.summary,
+    payload:
+      proposal.payload?.kind === 'create_proposal'
+        ? {
+            ...proposal.payload,
+            proposalDraft: draft,
+          }
+        : proposal.payload,
+  };
+}
+
+function removeDraftFromActionProposal(
+  proposal: AiActionProposal,
+  draftId: string
+): AiActionProposal | null {
+  if (proposal.payload?.kind !== 'create_proposal') {
+    return proposal;
+  }
+  const remainingDrafts = getActionProposalDrafts(proposal).filter((draft) => draft.id !== draftId);
+  if (remainingDrafts.length === 0) {
+    return null;
+  }
+  return {
+    ...proposal,
+    payload: {
+      ...proposal.payload,
+      proposalDraft: remainingDrafts[0],
+      ...(remainingDrafts.length > 1 ? { proposalDrafts: remainingDrafts } : {}),
+    },
+  };
+}
+
+function pruneDraftConversation(messages: AiMessage[], assistantMessageId: string): AiMessage[] {
+  const assistantIndex = messages.findIndex((message) => message.id === assistantMessageId);
+  if (assistantIndex === -1) return messages;
+  const next = [...messages];
+  next.splice(assistantIndex, 1);
+  const previous = next[assistantIndex - 1];
+  if (previous?.role === 'user') {
+    next.splice(assistantIndex - 1, 1);
+  }
+  return next;
+}
 
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -193,6 +279,7 @@ export function AiAssistantPanel({
 }: AiAssistantPanelProps) {
   const {
     addProposal,
+    addProposalContributions,
     updateProposal,
     proposals,
     groupUsers,
@@ -207,11 +294,11 @@ export function AiAssistantPanel({
     Record<string, AiActionProposal>
   >({});
   const [hiddenActionMessageIds, setHiddenActionMessageIds] = useState<Record<string, boolean>>({});
-  const [executingActionMessageId, setExecutingActionMessageId] = useState<string | null>(null);
-  const [completedActionMessageIds, setCompletedActionMessageIds] = useState<Record<string, boolean>>(
+  const [executingActionKey, setExecutingActionKey] = useState<string | null>(null);
+  const [completedActionKeys, setCompletedActionKeys] = useState<Record<string, boolean>>(
     {}
   );
-  const [proposalFlowDraftValuesByMessageId, setProposalFlowDraftValuesByMessageId] = useState<
+  const [proposalFlowDraftValuesByDraftKey, setProposalFlowDraftValuesByDraftKey] = useState<
     Record<string, AiProposalFormValues>
   >({});
   const [isLoading, setIsLoading] = useState(false);
@@ -238,21 +325,11 @@ export function AiAssistantPanel({
     Record<string, Record<string, boolean>>
   >({});
   const [calendarPopup, setCalendarPopup] = useState<CalendarPopupState | null>(null);
-  const [proposalFlowEditDrafts, setProposalFlowEditDrafts] = useState<
-    Record<string, ProposalFlowEditDraft>
-  >({});
-  const [proposalFlowSavingById, setProposalFlowSavingById] = useState<Record<string, boolean>>({});
-  const [proposalFlowAlternativeDraftsByMessageId, setProposalFlowAlternativeDraftsByMessageId] =
+  const [proposalFlowAlternativeDraftsByDraftKey, setProposalFlowAlternativeDraftsByDraftKey] =
     useState<Record<string, ProposalFlowAlternativeDraft>>({});
-  const [pendingAlternativeSuggestionsByMessageId, setPendingAlternativeSuggestionsByMessageId] =
+  const [pendingAlternativeSuggestionsByDraftKey, setPendingAlternativeSuggestionsByDraftKey] =
     useState<Record<string, PendingAlternativeSuggestion[]>>({});
-  const [proposalFlowEditorUserId, setProposalFlowEditorUserId] = useState<string>(userId);
-  const [proposalFlowEditorProposalId, setProposalFlowEditorProposalId] = useState<string | null>(null);
-  const [isProposalFlowEditorOpen, setIsProposalFlowEditorOpen] = useState(false);
   const [commentDraftByProposalId, setCommentDraftByProposalId] = useState<Record<string, string>>({});
-  const [editorAlternativeDraftByProposalId, setEditorAlternativeDraftByProposalId] = useState<
-    Record<string, ProposalFlowAlternativeDraft>
-  >({});
 
   useEffect(() => {
     setRecentMemories(memoryStore.listForUser(userId, activeGroupId).slice(0, 4));
@@ -280,86 +357,28 @@ export function AiAssistantPanel({
     }
   }, [proposals]);
 
-  useEffect(() => {
-    if (!proposalFlow) return;
-    const myProposals = proposals.filter((proposal) => proposal.createdBy === userId);
-    setProposalFlowEditDrafts((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      myProposals.forEach((proposal) => {
-        if (!next[proposal.id]) {
-          next[proposal.id] = buildProposalFlowEditDraft(proposal);
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [proposalFlow, proposals, userId]);
-
-  const syncProposalFlowSelection = () => {
-    if (!proposalFlow) return;
-    const isAdmin = groupUsers.some((member) => member.id === userId && member.isAdmin);
-    const availableUserIds = new Set<string>(
-      isAdmin ? [userId, ...groupUsers.map((member) => member.id)] : [userId]
-    );
-    const hasSelectedUser = availableUserIds.has(proposalFlowEditorUserId);
-    const nextUserId = hasSelectedUser ? proposalFlowEditorUserId : userId;
-    if (nextUserId !== proposalFlowEditorUserId) {
-      setProposalFlowEditorUserId(nextUserId);
-      return;
-    }
-
-    const proposalsForSelectedUser = proposals
-      .filter((proposal) => proposal.createdBy === nextUserId)
-      .slice()
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    if (proposalsForSelectedUser.length === 0) {
-      if (proposalFlowEditorProposalId !== null) {
-        setProposalFlowEditorProposalId(null);
-      }
-      return;
-    }
-    if (!proposalFlowEditorProposalId) {
-      setProposalFlowEditorProposalId(proposalsForSelectedUser[0].id);
-      return;
-    }
-    const exists = proposalsForSelectedUser.some(
-      (proposal) => proposal.id === proposalFlowEditorProposalId
-    );
-    if (!exists) {
-      setProposalFlowEditorProposalId(proposalsForSelectedUser[0].id);
-    }
-  };
-
-  useEffect(() => {
-    syncProposalFlowSelection();
-  }, [
-    proposalFlow,
-    proposals,
-    proposalFlowEditorUserId,
-    proposalFlowEditorProposalId,
-    groupUsers,
-    userId,
-  ]);
-
   const handleProposeFromDraft = async (
     messageId: string,
+    draftKey: string,
     proposal: AiActionProposal,
     formValues: AiProposalFormValues
   ) => {
-    if (executingActionMessageId) return;
+    if (executingActionKey) return;
     if (proposal.payload?.kind !== 'create_proposal') {
       setError('Unsupported AI action payload');
       return;
     }
 
     setError(null);
-    setExecutingActionMessageId(messageId);
+    setExecutingActionKey(draftKey);
 
     try {
       const draft = proposal.payload.proposalDraft;
+      const draftId = draft.id;
       const dateValue = formValues.dates.trim();
       const timeValue = formValues.times.trim();
+      const startTimeValue = normalizeTimeInputValue(formValues.startTime.trim());
+      const endTimeValue = normalizeTimeInputValue(formValues.endTime.trim());
       const placeValue = formValues.place.trim();
       const requirementsValue = formValues.requirements.trim();
       const commentsValue = formValues.comments.trim();
@@ -399,25 +418,36 @@ export function AiAssistantPanel({
           createdAt,
           status: 'proposed',
           specifics: {
-          ...(dateValue ? { date: dateValue } : {}),
-          ...(timeValue ? { time: timeValue } : {}),
-          ...(placeValue ? { location: placeValue } : {}),
-          ...(requirementsValue ? { requirements: requirementsValue } : {}),
-        },
+            ...(dateValue ? { date: dateValue } : {}),
+            ...(draft.type === 'sejour'
+              ? {
+                  ...(startTimeValue ? { startTime: startTimeValue } : {}),
+                  ...(endTimeValue ? { endTime: endTimeValue } : {}),
+                }
+              : timeValue
+                ? { time: timeValue }
+                : {}),
+            ...(placeValue ? { location: placeValue } : {}),
+            ...(requirementsValue ? { requirements: requirementsValue } : {}),
+          },
         ...(createdComments.length > 0 ? { comments: createdComments } : {}),
       };
 
       addProposal(createdProposal);
-      proposalThreadStore.addImplicitProposerAffirmation(createdProposal);
-      const pendingAlternatives = pendingAlternativeSuggestionsByMessageId[messageId] || [];
+      const implicitAffirmation = proposalThreadStore.addImplicitProposerAffirmation(createdProposal);
+      if (implicitAffirmation) {
+        void addProposalContributions(implicitAffirmation);
+      }
+      const pendingAlternatives = pendingAlternativeSuggestionsByDraftKey[draftKey] || [];
       let nextAvailability = getAvailability(userId, createdProposal.id);
       pendingAlternatives.forEach((suggestion) => {
         if (suggestion.dateText) {
-          const { impliedDates } = proposalThreadStore.addDateFieldChange(
+          const { contribution, auditContribution, impliedDates } = proposalThreadStore.addDateFieldChange(
             createdProposal.id,
             userId,
             suggestion.dateText
           );
+          void addProposalContributions([contribution, auditContribution]);
           if (impliedDates.length > 0) {
             const mergedDates = Array.from(
               new Set([...(nextAvailability?.dates || []), ...impliedDates])
@@ -432,10 +462,22 @@ export function AiAssistantPanel({
           }
         }
         if (suggestion.timeText) {
-          proposalThreadStore.addFieldChange(createdProposal.id, userId, 'time', suggestion.timeText);
+          const contribution = proposalThreadStore.addFieldChange(
+            createdProposal.id,
+            userId,
+            'time',
+            suggestion.timeText
+          );
+          void addProposalContributions(contribution);
         }
         if (suggestion.placeText) {
-          proposalThreadStore.addFieldChange(createdProposal.id, userId, 'place', suggestion.placeText);
+          const contribution = proposalThreadStore.addFieldChange(
+            createdProposal.id,
+            userId,
+            'place',
+            suggestion.placeText
+          );
+          void addProposalContributions(contribution);
         }
       });
       if (nextAvailability) {
@@ -445,29 +487,66 @@ export function AiAssistantPanel({
       if (canGenerateProposalThumbnail()) {
         void handleGenerateProposalThumbnail(createdProposal);
       }
-      setPendingAlternativeSuggestionsByMessageId((prev) => ({
+      setPendingAlternativeSuggestionsByDraftKey((prev) => ({
         ...prev,
-        [messageId]: [],
+        [draftKey]: [],
       }));
-      setProposalFlowAlternativeDraftsByMessageId((prev) => ({
+      setProposalFlowAlternativeDraftsByDraftKey((prev) => ({
         ...prev,
-        [messageId]: {
-          startDate: '',
-          endDate: '',
-          time: '',
-          place: '',
-        },
+        [draftKey]: EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT,
       }));
-      setCompletedActionMessageIds((prev) => ({ ...prev, [messageId]: true }));
+      setCompletedActionKeys((prev) => ({ ...prev, [draftKey]: true }));
+      setActionProposalsByMessageId((prev) => {
+        const current = prev[messageId];
+        if (!current) return prev;
+        const nextProposal = removeDraftFromActionProposal(current, draftId);
+        if (!nextProposal) {
+          const { [messageId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return {
+          ...prev,
+          [messageId]: nextProposal,
+        };
+      });
+      setProposalFlowDraftValuesByDraftKey((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+      setPendingAlternativeSuggestionsByDraftKey((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+      setProposalFlowAlternativeDraftsByDraftKey((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+      setCompletedActionKeys((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+      if (getActionProposalDrafts(proposal).length <= 1) {
+        setHiddenActionMessageIds((prev) => ({ ...prev, [messageId]: true }));
+        setMessages((prev) => pruneDraftConversation(prev, messageId));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to execute AI action');
     } finally {
-      setExecutingActionMessageId(null);
+      setExecutingActionKey(null);
     }
   };
 
   const handleCancelAction = (messageId: string) => {
     setHiddenActionMessageIds((prev) => ({ ...prev, [messageId]: true }));
+    setMessages((prev) => pruneDraftConversation(prev, messageId));
+    setActionProposalsByMessageId((prev) => {
+      const { [messageId]: _removed, ...rest } = prev;
+      return rest;
+    });
   };
 
   const refreshRecentMemories = () => {
@@ -532,7 +611,8 @@ export function AiAssistantPanel({
 
   const handleAffirmAvailabilityAsProposed = (proposal: Proposal) => {
     if (!proposalThreadStore.hasExplicitAffirmation(proposal.id, userId)) {
-      proposalThreadStore.addExplicitAffirmation(proposal.id, userId);
+      const contribution = proposalThreadStore.addExplicitAffirmation(proposal.id, userId);
+      void addProposalContributions(contribution);
     }
     const baselineDates = proposal.specifics?.date ? parseIsoDatesFromText(proposal.specifics.date) : [];
     if (baselineDates.length > 0) {
@@ -551,15 +631,20 @@ export function AiAssistantPanel({
   };
 
   const openSuggestAlternativesModal = (proposalId: string) => {
+    const proposal = proposals.find((entry) => entry.id === proposalId);
     const previous = proposalCardDrafts[proposalId];
     const parsed = parseDateRangeFromText(previous?.dateSuggestion || '');
+    const parsedTimes = parseSejourTimeText(previous?.timeSuggestion || '');
     setProposalCardDrafts((prev) => ({
       ...prev,
       [proposalId]: {
         dateSuggestion: previous?.dateSuggestion || '',
         startDateSuggestion: previous?.startDateSuggestion || parsed.startDate,
         endDateSuggestion: previous?.endDateSuggestion || parsed.endDate,
-        timeSuggestion: previous?.timeSuggestion || '',
+        timeSuggestion:
+          proposal?.type === 'sejour' ? '' : normalizeTimeInputValue(previous?.timeSuggestion || ''),
+        startTimeSuggestion: previous?.startTimeSuggestion || parsedTimes.startTime,
+        endTimeSuggestion: previous?.endTimeSuggestion || parsedTimes.endTime,
         placeSuggestion: previous?.placeSuggestion || '',
         isSuggestModalOpen: true,
       },
@@ -567,6 +652,9 @@ export function AiAssistantPanel({
   };
 
   const closeSuggestAlternativesModal = (proposalId: string) => {
+    const proposal = proposals.find((entry) => entry.id === proposalId);
+    const existingDraft = proposalCardDrafts[proposalId];
+    const parsedTimes = parseSejourTimeText(existingDraft?.timeSuggestion || '');
     setProposalCardDrafts((prev) => ({
       ...prev,
       [proposalId]: {
@@ -577,7 +665,10 @@ export function AiAssistantPanel({
         endDateSuggestion:
           prev[proposalId]?.endDateSuggestion ||
           parseDateRangeFromText(prev[proposalId]?.dateSuggestion || '').endDate,
-        timeSuggestion: prev[proposalId]?.timeSuggestion || '',
+        timeSuggestion:
+          proposal?.type === 'sejour' ? '' : normalizeTimeInputValue(prev[proposalId]?.timeSuggestion || ''),
+        startTimeSuggestion: prev[proposalId]?.startTimeSuggestion || parsedTimes.startTime,
+        endTimeSuggestion: prev[proposalId]?.endTimeSuggestion || parsedTimes.endTime,
         placeSuggestion: prev[proposalId]?.placeSuggestion || '',
         isSuggestModalOpen: false,
       },
@@ -596,9 +687,20 @@ export function AiAssistantPanel({
           startDateSuggestion: '',
           endDateSuggestion: '',
           timeSuggestion: '',
+          startTimeSuggestion: '',
+          endTimeSuggestion: '',
           placeSuggestion: '',
         }),
         ...updates,
+        ...(updates.timeSuggestion !== undefined
+          ? { timeSuggestion: normalizeTimeInputValue(updates.timeSuggestion) }
+          : {}),
+        ...(updates.startTimeSuggestion !== undefined
+          ? { startTimeSuggestion: normalizeTimeInputValue(updates.startTimeSuggestion) }
+          : {}),
+        ...(updates.endTimeSuggestion !== undefined
+          ? { endTimeSuggestion: normalizeTimeInputValue(updates.endTimeSuggestion) }
+          : {}),
       },
     }));
   };
@@ -610,12 +712,20 @@ export function AiAssistantPanel({
       draft.startDateSuggestion.trim(),
       draft.endDateSuggestion.trim()
     );
-    const timeText = draft.timeSuggestion.trim();
+    const timeText =
+      proposal.type === 'sejour'
+        ? formatSejourTimeText(draft.startTimeSuggestion, draft.endTimeSuggestion).trim()
+        : normalizeTimeInputValue(draft.timeSuggestion).trim();
     const placeText = draft.placeSuggestion.trim();
     if (!dateText && !timeText && !placeText) return;
 
     if (dateText) {
-      const { impliedDates } = proposalThreadStore.addDateFieldChange(proposal.id, userId, dateText);
+      const { contribution, auditContribution, impliedDates } = proposalThreadStore.addDateFieldChange(
+        proposal.id,
+        userId,
+        dateText
+      );
+      void addProposalContributions([contribution, auditContribution]);
       if (impliedDates.length > 0) {
         const current = getAvailability(userId, proposal.id);
         const nextDates = Array.from(new Set([...(current?.dates || []), ...impliedDates])).sort();
@@ -629,10 +739,12 @@ export function AiAssistantPanel({
       }
     }
     if (timeText) {
-      proposalThreadStore.addFieldChange(proposal.id, userId, 'time', timeText);
+      const contribution = proposalThreadStore.addFieldChange(proposal.id, userId, 'time', timeText);
+      void addProposalContributions(contribution);
     }
     if (placeText) {
-      proposalThreadStore.addFieldChange(proposal.id, userId, 'place', placeText);
+      const contribution = proposalThreadStore.addFieldChange(proposal.id, userId, 'place', placeText);
+      void addProposalContributions(contribution);
     }
 
     setProposalCardDrafts((prev) => ({
@@ -642,6 +754,8 @@ export function AiAssistantPanel({
         startDateSuggestion: '',
         endDateSuggestion: '',
         timeSuggestion: '',
+        startTimeSuggestion: '',
+        endTimeSuggestion: '',
         placeSuggestion: '',
         isSuggestModalOpen: false,
       },
@@ -668,33 +782,30 @@ export function AiAssistantPanel({
   };
 
   const updateProposalFlowAlternativeDraft = (
-    messageId: string,
+    draftKey: string,
     key: keyof ProposalFlowAlternativeDraft,
     value: string
   ) => {
-    setProposalFlowAlternativeDraftsByMessageId((prev) => ({
+    setProposalFlowAlternativeDraftsByDraftKey((prev) => ({
       ...prev,
-      [messageId]: {
-        ...(prev[messageId] || {
-          startDate: '',
-          endDate: '',
-          time: '',
-          place: '',
-        }),
-        [key]: value,
+      [draftKey]: {
+        ...(prev[draftKey] || EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT),
+        [key]:
+          key === 'time' || key === 'startTime' || key === 'endTime'
+            ? normalizeTimeInputValue(value)
+            : value,
       },
     }));
   };
 
-  const addPendingAlternativeSuggestion = (messageId: string) => {
-    const draft = proposalFlowAlternativeDraftsByMessageId[messageId] || {
-      startDate: '',
-      endDate: '',
-      time: '',
-      place: '',
-    };
+  const addPendingAlternativeSuggestion = (draftKey: string, proposalType: Proposal['type']) => {
+    const draft =
+      proposalFlowAlternativeDraftsByDraftKey[draftKey] || EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT;
     const dateText = formatDateRangeText(draft.startDate.trim(), draft.endDate.trim());
-    const timeText = draft.time.trim();
+    const timeText =
+      proposalType === 'sejour'
+        ? formatSejourTimeText(draft.startTime, draft.endTime).trim()
+        : normalizeTimeInputValue(draft.time).trim();
     const placeText = draft.place.trim();
     if (!dateText && !timeText && !placeText) return;
 
@@ -705,25 +816,20 @@ export function AiAssistantPanel({
       placeText,
     };
 
-    setPendingAlternativeSuggestionsByMessageId((prev) => ({
+    setPendingAlternativeSuggestionsByDraftKey((prev) => ({
       ...prev,
-      [messageId]: [...(prev[messageId] || []), nextSuggestion],
+      [draftKey]: [...(prev[draftKey] || []), nextSuggestion],
     }));
-    setProposalFlowAlternativeDraftsByMessageId((prev) => ({
+    setProposalFlowAlternativeDraftsByDraftKey((prev) => ({
       ...prev,
-      [messageId]: {
-        startDate: '',
-        endDate: '',
-        time: '',
-        place: '',
-      },
+      [draftKey]: EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT,
     }));
   };
 
-  const removePendingAlternativeSuggestion = (messageId: string, suggestionId: string) => {
-    setPendingAlternativeSuggestionsByMessageId((prev) => ({
+  const removePendingAlternativeSuggestion = (draftKey: string, suggestionId: string) => {
+    setPendingAlternativeSuggestionsByDraftKey((prev) => ({
       ...prev,
-      [messageId]: (prev[messageId] || []).filter((entry) => entry.id !== suggestionId),
+      [draftKey]: (prev[draftKey] || []).filter((entry) => entry.id !== suggestionId),
     }));
   };
 
@@ -744,113 +850,6 @@ export function AiAssistantPanel({
     setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: '' }));
   };
 
-  const updateEditorAlternativeDraftField = (
-    proposalId: string,
-    key: keyof ProposalFlowAlternativeDraft,
-    value: string
-  ) => {
-    setEditorAlternativeDraftByProposalId((prev) => ({
-      ...prev,
-      [proposalId]: {
-        ...(prev[proposalId] || {
-          startDate: '',
-          endDate: '',
-          time: '',
-          place: '',
-        }),
-        [key]: value,
-      },
-    }));
-  };
-
-  const handleSubmitEditorAlternative = (proposal: Proposal) => {
-    const draft = editorAlternativeDraftByProposalId[proposal.id] || {
-      startDate: '',
-      endDate: '',
-      time: '',
-      place: '',
-    };
-    const dateText = formatDateRangeText(
-      draft.startDate.trim(),
-      proposal.type === 'sejour' ? draft.endDate.trim() : draft.startDate.trim()
-    );
-    const timeText = draft.time.trim();
-    const placeText = draft.place.trim();
-    if (!dateText && !timeText && !placeText) return;
-
-    if (dateText) {
-      const { impliedDates } = proposalThreadStore.addDateFieldChange(proposal.id, userId, dateText);
-      if (impliedDates.length > 0) {
-        const current = getAvailability(userId, proposal.id);
-        const nextDates = Array.from(new Set([...(current?.dates || []), ...impliedDates])).sort();
-        setAvailability({
-          id: current?.id || generateId(),
-          userId,
-          proposalId: proposal.id,
-          dates: nextDates,
-          timeSlots: current?.timeSlots,
-        });
-      }
-    }
-    if (timeText) proposalThreadStore.addFieldChange(proposal.id, userId, 'time', timeText);
-    if (placeText) proposalThreadStore.addFieldChange(proposal.id, userId, 'place', placeText);
-
-    setEditorAlternativeDraftByProposalId((prev) => ({
-      ...prev,
-      [proposal.id]: { startDate: '', endDate: '', time: '', place: '' },
-    }));
-    setProposalFeedRefreshTick((tick) => tick + 1);
-  };
-
-  const updateProposalFlowEditField = (
-    proposalId: string,
-    key: keyof ProposalFlowEditDraft,
-    value: string
-  ) => {
-    setProposalFlowEditDrafts((prev) => ({
-      ...prev,
-      [proposalId]: {
-        ...(prev[proposalId] || {
-          title: '',
-          startDate: '',
-          endDate: '',
-          time: '',
-          place: '',
-        }),
-        [key]: value,
-      },
-    }));
-  };
-
-  const handleSaveProposalFlowEdit = async (proposal: Proposal) => {
-    const draft = proposalFlowEditDrafts[proposal.id] || buildProposalFlowEditDraft(proposal);
-    const nextTitle = draft.title.trim();
-    if (!nextTitle) {
-      setError('Title is required.');
-      return;
-    }
-
-    const nextSpecifics = { ...(proposal.specifics || {}) };
-    const dateText = formatDateRangeText(draft.startDate.trim(), draft.endDate.trim());
-    const timeText = draft.time.trim();
-    const placeText = draft.place.trim();
-
-    if (dateText) nextSpecifics.date = dateText;
-    else delete nextSpecifics.date;
-    if (timeText) nextSpecifics.time = timeText;
-    else delete nextSpecifics.time;
-    if (placeText) nextSpecifics.location = placeText;
-    else delete nextSpecifics.location;
-
-    setProposalFlowSavingById((prev) => ({ ...prev, [proposal.id]: true }));
-    await updateProposal(proposal.id, {
-      title: nextTitle,
-      specifics: nextSpecifics,
-    });
-    setProposalFeedRefreshTick((tick) => tick + 1);
-    setProposalFlowSavingById((prev) => ({ ...prev, [proposal.id]: false }));
-  };
-
 
   const handleAddToCalendar = (proposal: Proposal) => {
     const parsedDates = parseIsoDatesFromText(proposal.specifics?.date || '');
@@ -862,7 +861,13 @@ export function AiAssistantPanel({
     const startDate = new Date(`${parsedDates[0]}T00:00:00`);
     const lastDate = parsedDates[parsedDates.length - 1];
     const endDateBase = new Date(`${lastDate}T00:00:00`);
-    const parsedTime = parseFirstTime24h(proposal.specifics?.time || '');
+    const startTimeValue = proposal.type === 'sejour'
+      ? getProposalStartTime(proposal)
+      : proposal.specifics?.time || '';
+    const endTimeValue = proposal.type === 'sejour'
+      ? getProposalEndTime(proposal)
+      : proposal.specifics?.time || '';
+    const parsedTime = parseFirstTime24h(startTimeValue);
 
     let dtStart = '';
     let dtEnd = '';
@@ -870,7 +875,13 @@ export function AiAssistantPanel({
 
     if (parsedTime) {
       startDate.setHours(parsedTime.hour, parsedTime.minute, 0, 0);
-      const endDateTime = new Date(startDate.getTime() + 60 * 60 * 1000);
+      const parsedEndTime = parseFirstTime24h(endTimeValue);
+      const endDateTime = parsedEndTime
+        ? new Date(`${lastDate}T00:00:00`)
+        : new Date(startDate.getTime() + 60 * 60 * 1000);
+      if (parsedEndTime) {
+        endDateTime.setHours(parsedEndTime.hour, parsedEndTime.minute, 0, 0);
+      }
       dtStart = formatIcsDateTimePart(startDate);
       dtEnd = formatIcsDateTimePart(endDateTime);
     } else {
@@ -884,7 +895,7 @@ export function AiAssistantPanel({
     const locationText = proposal.specifics?.location?.trim() || '';
     const descriptionParts = [
       proposal.comments?.length ? proposal.comments.map((c) => c.text).join('\n') : '',
-      proposal.specifics?.time ? `Time: ${proposal.specifics.time}` : '',
+      startTimeValue || endTimeValue ? `Time: ${[startTimeValue, endTimeValue].filter(Boolean).join(' -> ')}` : '',
       proposal.specifics?.date ? `Date: ${proposal.specifics.date}` : '',
     ].filter(Boolean);
 
@@ -1034,12 +1045,17 @@ export function AiAssistantPanel({
     }
   };
 
-  const getInitialDraftValues = (proposal: AiActionProposal): AiProposalFormValues => {
-    const draft = proposal.payload?.proposalDraft;
+  const getInitialDraftValues = (draft: AiProposalDraft): AiProposalFormValues => {
     return {
       title: draft?.title || '',
       dates: draft?.form?.dates || draft?.specifics?.date || '',
-      times: draft?.form?.times || draft?.specifics?.time || '',
+      times: normalizeTimeInputValue(draft?.form?.times || draft?.specifics?.time || ''),
+      startTime: normalizeTimeInputValue(
+        draft?.form?.startTime || draft?.specifics?.startTime || ''
+      ),
+      endTime: normalizeTimeInputValue(
+        draft?.form?.endTime || draft?.specifics?.endTime || ''
+      ),
       invitees: draft?.form?.invitees || 'Everyone in active group',
       place: draft?.form?.place || draft?.specifics?.location || '',
       requirements: draft?.form?.requirements || '',
@@ -1048,16 +1064,19 @@ export function AiAssistantPanel({
   };
 
   const updateProposalFlowDraftField = (
-    messageId: string,
-    proposal: AiActionProposal,
+    draftKey: string,
+    draft: AiProposalDraft,
     key: keyof AiProposalFormValues,
     value: string
   ) => {
-    setProposalFlowDraftValuesByMessageId((prev) => ({
+    setProposalFlowDraftValuesByDraftKey((prev) => ({
       ...prev,
-      [messageId]: {
-        ...((prev[messageId] || getInitialDraftValues(proposal)) as AiProposalFormValues),
-        [key]: value,
+      [draftKey]: {
+        ...((prev[draftKey] || getInitialDraftValues(draft)) as AiProposalFormValues),
+        [key]:
+          key === 'times' || key === 'startTime' || key === 'endTime'
+            ? normalizeTimeInputValue(value)
+            : value,
       },
     }));
   };
@@ -1074,34 +1093,20 @@ export function AiAssistantPanel({
   const latestProposalFlowActionProposal = latestProposalFlowActionMessageId
     ? actionProposalsByMessageId[latestProposalFlowActionMessageId]
     : null;
+  const latestProposalFlowDrafts = latestProposalFlowActionProposal
+    ? getActionProposalDrafts(latestProposalFlowActionProposal)
+    : [];
+  const latestProposalFlowPrimaryDraft = latestProposalFlowDrafts[0] || null;
+  const latestProposalFlowPrimaryDraftKey =
+    latestProposalFlowActionMessageId && latestProposalFlowPrimaryDraft
+      ? getScopedDraftKey(latestProposalFlowActionMessageId, latestProposalFlowPrimaryDraft.id)
+      : null;
   const latestProposalFlowDraftValues =
-    latestProposalFlowActionMessageId && latestProposalFlowActionProposal
-      ? proposalFlowDraftValuesByMessageId[latestProposalFlowActionMessageId] ||
-      getInitialDraftValues(latestProposalFlowActionProposal)
+    latestProposalFlowPrimaryDraftKey && latestProposalFlowPrimaryDraft
+      ? proposalFlowDraftValuesByDraftKey[latestProposalFlowPrimaryDraftKey] ||
+        getInitialDraftValues(latestProposalFlowPrimaryDraft)
       : null;
   const userNameById = new Map(displayGroupUsers.map((member) => [member.id, member.name]));
-  const currentUserIsAdmin = displayGroupUsers.some(
-    (member) => member.id === userId && member.isAdmin
-  );
-  const proposalFlowEditorUsers = currentUserIsAdmin
-    ? displayGroupUsers
-    : displayGroupUsers.filter((member) => member.id === userId).length > 0
-      ? displayGroupUsers.filter((member) => member.id === userId)
-      : [{ id: userId, name: userNameById.get(userId) || 'Me', isAdmin: false }];
-  const editableProposalsForSelectedUser = proposals
-    .filter((proposal) => proposal.createdBy === proposalFlowEditorUserId)
-    .slice()
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const selectedEditableProposal = proposalFlowEditorProposalId
-    ? editableProposalsForSelectedUser.find(
-      (proposal) => proposal.id === proposalFlowEditorProposalId
-    ) || null
-    : null;
-  const canEditSelectedProposal =
-    Boolean(selectedEditableProposal) &&
-    (currentUserIsAdmin || selectedEditableProposal?.createdBy === userId);
-  const showProposalFlowEditorOnly =
-    proposalFlow && isProposalFlowEditorOpen && Boolean(selectedEditableProposal);
 
   if (cardDeckMode) {
     return (
@@ -1131,12 +1136,22 @@ export function AiAssistantPanel({
         )}
         {proposalFlow ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
-            {!showProposalFlowEditorOnly && (
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                {messages.length > 0 && (
-                  <div className="space-y-2">
-                    {messages.map((message) => {
+            <div
+              data-screen-scroll-root="true"
+              className="hide-scrollbar min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900"
+            >
+              {messages.length > 0 && (
+                <div className="space-y-2">
+                  {messages.map((message) => {
                       const draftProposal = actionProposalsByMessageId[message.id];
+                      const draftsForMessage = draftProposal
+                        ? getActionProposalDrafts(draftProposal)
+                        : [];
+                      const primaryDraft = draftsForMessage[0] || null;
+                      const primaryDraftKey =
+                        primaryDraft && draftProposal
+                          ? getScopedDraftKey(message.id, primaryDraft.id)
+                          : null;
                       const shouldShowDraftDetails =
                         message.role === 'assistant' &&
                         Boolean(draftProposal) &&
@@ -1147,21 +1162,20 @@ export function AiAssistantPanel({
                           Boolean(draftProposal) &&
                           !hiddenActionMessageIds[message.id]
                         );
-                      const draftValues = draftProposal
-                        ? proposalFlowDraftValuesByMessageId[message.id] || getInitialDraftValues(draftProposal)
+                      const draftValues = primaryDraftKey && primaryDraft
+                        ? proposalFlowDraftValuesByDraftKey[primaryDraftKey] || getInitialDraftValues(primaryDraft)
                         : null;
                       const draftDateRange = draftValues
                         ? parseDateRangeFromText(draftValues.dates)
                         : { startDate: '', endDate: '' };
-                      const isSejourDraft = draftProposal?.payload?.proposalDraft?.type === 'sejour';
-                      const alternativeDraft = proposalFlowAlternativeDraftsByMessageId[message.id] || {
-                        startDate: '',
-                        endDate: '',
-                        time: '',
-                        place: '',
-                      };
-                      const pendingAlternatives =
-                        pendingAlternativeSuggestionsByMessageId[message.id] || [];
+                      const isSejourDraft = primaryDraft?.type === 'sejour';
+                      const alternativeDraft = primaryDraftKey
+                        ? proposalFlowAlternativeDraftsByDraftKey[primaryDraftKey] || EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT
+                        : EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT;
+                      const pendingAlternatives = primaryDraftKey
+                        ? pendingAlternativeSuggestionsByDraftKey[primaryDraftKey] || []
+                        : [];
+                      const hasMultipleDrafts = draftsForMessage.length > 1;
                       return (
                         <div key={message.id} className="space-y-1.5">
                           {shouldShowMessageBubble && (
@@ -1179,15 +1193,50 @@ export function AiAssistantPanel({
                           )}
                           {shouldShowDraftDetails && (
                             <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
-                              {draftProposal && draftValues && (
+                              {draftProposal && hasMultipleDrafts ? (
+                                <div className="mt-1 space-y-2">
+                                  <p className="text-[11px] font-medium text-sky-800 dark:text-sky-200">
+                                    Review each idea separately and propose only the ones worth keeping.
+                                  </p>
+                                  {draftsForMessage.map((draft, draftIndex) => {
+                                    const scopedDraftKey = getScopedDraftKey(message.id, draft.id);
+                                    const scopedProposal = getScopedActionProposal(
+                                      draftProposal,
+                                      draft,
+                                      draftsForMessage.length
+                                    );
+                                    return (
+                                      <div key={scopedDraftKey} className="space-y-1">
+                                        <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                                          Idea {draftIndex + 1}
+                                        </div>
+                                        <AiProposalFormCard
+                                          proposal={scopedProposal}
+                                          onPropose={(values, proposal) =>
+                                            handleProposeFromDraft(
+                                              message.id,
+                                              scopedDraftKey,
+                                              proposal,
+                                              values
+                                            )
+                                          }
+                                          isSubmitting={executingActionKey === scopedDraftKey}
+                                          isCompleted={Boolean(completedActionKeys[scopedDraftKey])}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                draftProposal && draftValues && primaryDraft && primaryDraftKey && (
                                 <div className="mt-1 space-y-1.5">
                                   <input
                                     type="text"
                                     value={draftValues.title}
                                     onChange={(e) =>
                                       updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
+                                        primaryDraftKey,
+                                        primaryDraft,
                                         'title',
                                         e.target.value
                                       )
@@ -1195,53 +1244,66 @@ export function AiAssistantPanel({
                                     placeholder="Title"
                                     className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
                                   />
-                                  <div className={`grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                                  <div className={`grid grid-cols-1 gap-1.5 ${isSejourDraft ? '' : 'md:grid-cols-2'}`}>
                                     {isSejourDraft ? (
-                                      <>
-                                        <input
-                                          type="date"
-                                          value={draftDateRange.startDate}
-                                          onChange={(e) =>
-                                            updateProposalFlowDraftField(
-                                              message.id,
-                                              draftProposal,
-                                              'dates',
-                                              formatDateRangeText(
-                                                e.target.value,
-                                                draftDateRange.endDate
-                                              )
-                                            )
-                                          }
-                                          aria-label="Start date"
-                                          className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                        />
-                                        <input
-                                          type="date"
-                                          value={draftDateRange.endDate}
-                                          min={draftDateRange.startDate || undefined}
-                                          onChange={(e) =>
-                                            updateProposalFlowDraftField(
-                                              message.id,
-                                              draftProposal,
-                                              'dates',
-                                              formatDateRangeText(
-                                                draftDateRange.startDate,
-                                                e.target.value
-                                              )
-                                            )
-                                          }
-                                          aria-label="End date"
-                                          className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                        />
-                                      </>
+                                      <SejourDateTimeRow
+                                        startDate={draftDateRange.startDate}
+                                        endDate={draftDateRange.endDate}
+                                        startTime={draftValues.startTime}
+                                        endTime={draftValues.endTime}
+                                        onStartDateChange={(value) =>
+                                          updateProposalFlowDraftField(
+                                            primaryDraftKey,
+                                            primaryDraft,
+                                            'dates',
+                                            formatDateRangeText(value, draftDateRange.endDate)
+                                          )
+                                        }
+                                        onEndDateChange={(value) =>
+                                          updateProposalFlowDraftField(
+                                            primaryDraftKey,
+                                            primaryDraft,
+                                            'dates',
+                                            formatDateRangeText(draftDateRange.startDate, value)
+                                          )
+                                        }
+                                        onStartTimeChange={(value) =>
+                                          updateProposalFlowDraftField(
+                                            primaryDraftKey,
+                                            primaryDraft,
+                                            'startTime',
+                                            value
+                                          )
+                                        }
+                                        onEndTimeChange={(value) =>
+                                          updateProposalFlowDraftField(
+                                            primaryDraftKey,
+                                            primaryDraft,
+                                            'endTime',
+                                            value
+                                          )
+                                        }
+                                        startDateLabel="Start Date"
+                                        startTimeLabel="Start Time"
+                                        endDateLabel="End Date"
+                                        endTimeLabel="End Time"
+                                        startDateAriaLabel="Start date"
+                                        startTimeAriaLabel="Start time"
+                                        endDateAriaLabel="End date"
+                                        endTimeAriaLabel="End time"
+                                        dateInputClassName="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                        timeSelectClassName="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                        labelClassName="text-[10px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-200"
+                                        separatorClassName="text-[11px] font-semibold text-sky-400 dark:text-sky-600"
+                                      />
                                     ) : (
                                       <input
                                         type="date"
                                         value={draftDateRange.startDate}
                                         onChange={(e) =>
                                           updateProposalFlowDraftField(
-                                            message.id,
-                                            draftProposal,
+                                            primaryDraftKey,
+                                            primaryDraft,
                                             'dates',
                                             e.target.value
                                           )
@@ -1250,32 +1312,32 @@ export function AiAssistantPanel({
                                         className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
                                       />
                                     )}
-                                    <input
-                                      type="time"
-                                      value={
-                                        /^\d{2}:\d{2}$/.test(draftValues.times.trim())
-                                          ? draftValues.times.trim()
-                                          : ''
-                                      }
-                                      step={900}
-                                      onChange={(e) =>
-                                        updateProposalFlowDraftField(
-                                          message.id,
-                                          draftProposal,
-                                          'times',
-                                          e.target.value
-                                        )
-                                      }
-                                      aria-label="Time"
-                                      className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                                    />
+                                    {!isSejourDraft && (
+                                      <QuarterHourTimeSelect
+                                        value={
+                                          /^\d{2}:\d{2}$/.test(draftValues.times.trim())
+                                            ? draftValues.times.trim()
+                                            : ''
+                                        }
+                                        onChange={(value) =>
+                                          updateProposalFlowDraftField(
+                                            primaryDraftKey,
+                                            primaryDraft,
+                                            'times',
+                                            value
+                                          )
+                                        }
+                                        ariaLabel="Time"
+                                        className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                      />
+                                    )}
                                   </div>
                                   <textarea
                                     value={draftValues.invitees}
                                     onChange={(e) =>
                                       updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
+                                        primaryDraftKey,
+                                        primaryDraft,
                                         'invitees',
                                         e.target.value
                                       )
@@ -1288,8 +1350,8 @@ export function AiAssistantPanel({
                                     value={draftValues.place}
                                     onChange={(e) =>
                                       updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
+                                        primaryDraftKey,
+                                        primaryDraft,
                                         'place',
                                         e.target.value
                                       )
@@ -1302,8 +1364,8 @@ export function AiAssistantPanel({
                                     value={draftValues.requirements}
                                     onChange={(e) =>
                                       updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
+                                        primaryDraftKey,
+                                        primaryDraft,
                                         'requirements',
                                         e.target.value
                                       )
@@ -1316,63 +1378,64 @@ export function AiAssistantPanel({
                                     value={draftValues.comments}
                                     onChange={(e) =>
                                       updateProposalFlowDraftField(
-                                        message.id,
-                                        draftProposal,
+                                        primaryDraftKey,
+                                        primaryDraft,
                                         'comments',
                                         e.target.value
                                       )
                                     }
                                     rows={2}
-                                    placeholder="Comments"
+                                    placeholder="Notes"
                                     className="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100"
                                   />
                                   <div className="rounded border border-sky-300 bg-white p-2 text-xs text-gray-900 dark:border-sky-900/60 dark:bg-slate-900 dark:text-slate-100">
                                     <p className="font-semibold text-sky-900 dark:text-sky-200">
                                       Add alternative suggestions before confirming
                                     </p>
-                                    <div className={`mt-1 grid grid-cols-1 gap-1.5 ${isSejourDraft ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                                    <div className={`mt-1 grid grid-cols-1 gap-1.5 ${isSejourDraft ? '' : 'md:grid-cols-3'}`}>
                                       {isSejourDraft ? (
-                                        <>
-                                          <input
-                                            type="date"
-                                            value={alternativeDraft.startDate}
-                                            onChange={(e) =>
-                                              updateProposalFlowAlternativeDraft(
-                                                message.id,
-                                                'startDate',
-                                                e.target.value
-                                              )
-                                            }
-                                            aria-label="Alternative start date"
-                                            className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                          />
-                                          <input
-                                            type="date"
-                                            value={alternativeDraft.endDate}
-                                            min={alternativeDraft.startDate || undefined}
-                                            onChange={(e) =>
-                                              updateProposalFlowAlternativeDraft(
-                                                message.id,
-                                                'endDate',
-                                                e.target.value
-                                              )
-                                            }
-                                            aria-label="Alternative end date"
-                                            className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                          />
-                                        </>
+                                        <SejourDateTimeRow
+                                          startDate={alternativeDraft.startDate}
+                                          endDate={alternativeDraft.endDate}
+                                          startTime={alternativeDraft.startTime}
+                                          endTime={alternativeDraft.endTime}
+                                          onStartDateChange={(value) =>
+                                            updateProposalFlowAlternativeDraft(primaryDraftKey, 'startDate', value)
+                                          }
+                                          onEndDateChange={(value) =>
+                                            updateProposalFlowAlternativeDraft(primaryDraftKey, 'endDate', value)
+                                          }
+                                          onStartTimeChange={(value) =>
+                                            updateProposalFlowAlternativeDraft(primaryDraftKey, 'startTime', value)
+                                          }
+                                          onEndTimeChange={(value) =>
+                                            updateProposalFlowAlternativeDraft(primaryDraftKey, 'endTime', value)
+                                          }
+                                          startDateLabel="Start Date"
+                                          startTimeLabel="Start Time"
+                                          endDateLabel="End Date"
+                                          endTimeLabel="End Time"
+                                          startDateAriaLabel="Alternative start date"
+                                          startTimeAriaLabel="Alternative start time"
+                                          endDateAriaLabel="Alternative end date"
+                                          endTimeAriaLabel="Alternative end time"
+                                          dateInputClassName="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                          timeSelectClassName="w-full rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                          labelClassName="text-[10px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-200"
+                                          separatorClassName="text-[11px] font-semibold text-sky-400 dark:text-sky-600"
+                                        />
                                       ) : (
                                         <input
                                           type="date"
                                           value={alternativeDraft.startDate}
                                           onChange={(e) => {
                                             updateProposalFlowAlternativeDraft(
-                                              message.id,
+                                              primaryDraftKey,
                                               'startDate',
                                               e.target.value
                                             );
                                             updateProposalFlowAlternativeDraft(
-                                              message.id,
+                                              primaryDraftKey,
                                               'endDate',
                                               e.target.value
                                             );
@@ -1381,26 +1444,26 @@ export function AiAssistantPanel({
                                           className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
                                         />
                                       )}
-                                      <input
-                                        type="time"
-                                        value={alternativeDraft.time}
-                                        step={900}
-                                        onChange={(e) =>
-                                          updateProposalFlowAlternativeDraft(
-                                            message.id,
-                                            'time',
-                                            e.target.value
-                                          )
-                                        }
-                                        aria-label="Alternative time"
-                                        className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                      />
+                                      {!isSejourDraft && (
+                                        <QuarterHourTimeSelect
+                                          value={alternativeDraft.time}
+                                          onChange={(value) =>
+                                            updateProposalFlowAlternativeDraft(
+                                              primaryDraftKey,
+                                              'time',
+                                              value
+                                            )
+                                          }
+                                          ariaLabel="Alternative time"
+                                          className="rounded border border-sky-300 bg-white px-2 py-1.5 text-xs dark:border-sky-900/60 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        />
+                                      )}
                                       <input
                                         type="text"
                                         value={alternativeDraft.place}
                                         onChange={(e) =>
                                           updateProposalFlowAlternativeDraft(
-                                            message.id,
+                                            primaryDraftKey,
                                             'place',
                                             e.target.value
                                           )
@@ -1412,7 +1475,12 @@ export function AiAssistantPanel({
                                     <div className="mt-1.5 flex items-center justify-between gap-2">
                                       <button
                                         type="button"
-                                        onClick={() => addPendingAlternativeSuggestion(message.id)}
+                                        onClick={() =>
+                                          addPendingAlternativeSuggestion(
+                                            primaryDraftKey,
+                                            isSejourDraft ? 'sejour' : 'event'
+                                          )
+                                        }
                                         className="rounded bg-sky-700 px-2 py-1 text-[11px] font-medium text-white hover:bg-sky-800"
                                       >
                                         Queue Alternative
@@ -1433,7 +1501,7 @@ export function AiAssistantPanel({
                                             <button
                                               type="button"
                                               onClick={() =>
-                                                removePendingAlternativeSuggestion(message.id, entry.id)
+                                                removePendingAlternativeSuggestion(primaryDraftKey, entry.id)
                                               }
                                               className="rounded border border-sky-300 px-1.5 py-0.5 text-[10px] dark:border-sky-900/60"
                                             >
@@ -1445,155 +1513,77 @@ export function AiAssistantPanel({
                                     )}
                                   </div>
                                 </div>
-                              )}
+                              ))
+                              }
                             </div>
                           )}
                         </div>
                       );
                     })}
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-2 dark:border-indigo-900/50 dark:bg-indigo-950/20">
-              <div className="flex flex-wrap items-center gap-2">
-                {currentUserIsAdmin ? (
-                  <select
-                    value={proposalFlowEditorUserId}
-                    onChange={(e) => {
-                      setProposalFlowEditorUserId(e.target.value);
-                      setIsProposalFlowEditorOpen(false);
-                    }}
-                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
-                  >
-                    {proposalFlowEditorUsers.map((member) => (
-                      <option key={`proposal-flow-editor-user-${member.id}`} value={member.id}>
-                        {member.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-indigo-800 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200">
-                    {userNameById.get(userId) || 'My activities'}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setIsProposalFlowEditorOpen((prev) => !prev)}
-                  disabled={editableProposalsForSelectedUser.length === 0}
-                  className="rounded bg-indigo-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isProposalFlowEditorOpen ? 'Hide Activity Editor' : 'Open Activity Editor'}
-                </button>
-                {showProposalFlowEditorOnly && (
-                  <button
-                    type="button"
-                    onClick={() => setIsProposalFlowEditorOpen(false)}
-                    className="rounded border border-indigo-300 bg-white px-2.5 py-1.5 text-xs text-indigo-800 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-indigo-200"
-                  >
-                    Back To Snooky
-                  </button>
-                )}
-                {editableProposalsForSelectedUser.length === 0 && (
-                  <span className="text-[11px] text-indigo-700 dark:text-indigo-300">
-                    No activities for selected user.
-                  </span>
-                )}
-              </div>
-
-              {isProposalFlowEditorOpen && selectedEditableProposal && (
-                <div className="mt-2 space-y-2 rounded border border-indigo-200 bg-white p-2 dark:border-indigo-900/60 dark:bg-slate-900">
-                  <select
-                    value={proposalFlowEditorProposalId || ''}
-                    onChange={(e) => setProposalFlowEditorProposalId(e.target.value || null)}
-                    className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
-                  >
-                    {editableProposalsForSelectedUser.map((proposal) => (
-                      <option key={`proposal-flow-editor-proposal-${proposal.id}`} value={proposal.id}>
-                        {proposal.title}
-                      </option>
-                    ))}
-                  </select>
-                  {(() => {
-                    const proposal = selectedEditableProposal;
-
-                    return (
-                      <ProposalFlowEditor
-                        selectedEditableProposal={proposal}
-                        proposalFlowEditDrafts={proposalFlowEditDrafts}
-                        userId={userId}
-                        userNameById={userNameById}
-                        updateProposalFlowEditField={updateProposalFlowEditField}
-                        canEditSelectedProposal={canEditSelectedProposal}
-                        editorAlternativeDraftByProposalId={editorAlternativeDraftByProposalId}
-                        updateEditorAlternativeDraftField={updateEditorAlternativeDraftField}
-                        handleSubmitEditorAlternative={handleSubmitEditorAlternative}
-                        commentDraftByProposalId={commentDraftByProposalId}
-                        setCommentDraftByProposalId={setCommentDraftByProposalId}
-                        handleAddProposalComment={handleAddProposalComment}
-                        proposalFlowSavingById={proposalFlowSavingById}
-                        handleSaveProposalFlowEdit={handleSaveProposalFlowEdit}
-                      />
-                    );
-                  })()}
                 </div>
               )}
             </div>
-            {!showProposalFlowEditorOnly && (
-              <div className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                <div className="flex items-center gap-2">
-                  {latestProposalFlowActionMessageId &&
-                    latestProposalFlowActionProposal &&
-                    latestProposalFlowDraftValues && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleProposeFromDraft(
-                            latestProposalFlowActionMessageId,
-                            latestProposalFlowActionProposal,
-                            latestProposalFlowDraftValues
-                          )
-                        }
-                        disabled={
-                          executingActionMessageId === latestProposalFlowActionMessageId ||
-                          Boolean(completedActionMessageIds[latestProposalFlowActionMessageId]) ||
-                          latestProposalFlowDraftValues.title.trim().length === 0
-                        }
-                        className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {completedActionMessageIds[latestProposalFlowActionMessageId]
-                          ? 'Confirmed'
-                          : executingActionMessageId === latestProposalFlowActionMessageId
-                            ? 'Confirming...'
-                            : 'Confirm'}
-                      </button>
-                    )}
-                  {latestProposalFlowActionMessageId && (
+            <div className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex items-center gap-2">
+                {latestProposalFlowActionMessageId &&
+                  latestProposalFlowActionProposal &&
+                  latestProposalFlowDraftValues &&
+                  latestProposalFlowPrimaryDraft &&
+                  latestProposalFlowPrimaryDraftKey &&
+                  latestProposalFlowDrafts.length === 1 && (
                     <button
                       type="button"
-                      onClick={() => handleCancelAction(latestProposalFlowActionMessageId)}
-                      className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      onClick={() =>
+                        handleProposeFromDraft(
+                          latestProposalFlowActionMessageId,
+                          latestProposalFlowPrimaryDraftKey,
+                          latestProposalFlowActionProposal,
+                          latestProposalFlowDraftValues
+                        )
+                      }
+                      disabled={
+                        executingActionKey === latestProposalFlowPrimaryDraftKey ||
+                        Boolean(completedActionKeys[latestProposalFlowPrimaryDraftKey]) ||
+                        latestProposalFlowDraftValues.title.trim().length === 0
+                      }
+                      className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Cancel
+                      {completedActionKeys[latestProposalFlowPrimaryDraftKey]
+                        ? 'Confirmed'
+                        : executingActionKey === latestProposalFlowPrimaryDraftKey
+                          ? 'Confirming...'
+                          : 'Confirm'}
                     </button>
                   )}
+                {latestProposalFlowActionMessageId && (
                   <button
                     type="button"
-                    onClick={onProposalFlowGoActivities}
+                    onClick={() => handleCancelAction(latestProposalFlowActionMessageId)}
                     className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
-                    Activities
+                    Cancel
                   </button>
-                </div>
+                )}
+                <button
+                  type="button"
+                  onClick={onProposalFlowGoActivities}
+                  className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Activities
+                </button>
               </div>
-            )}
+            </div>
           </div>
         ) : sortedProposals.length === 0 ? (
           <div className="flex flex-1 items-center justify-center rounded-lg bg-white p-3 text-xs text-gray-600 dark:bg-slate-900 dark:text-slate-300">
             No proposals yet. Use Snooky below to draft one.
           </div>
         ) : (
-          <div className="hide-scrollbar min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              data-screen-scroll-root="true"
+              className="hide-scrollbar min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto"
+            >
             {sortedProposals.map((proposal, index) => (
               <ProposalCard
                 key={`${proposal.id}-${proposalFeedRefreshTick}`}
@@ -1626,6 +1616,7 @@ export function AiAssistantPanel({
                 userNameById={userNameById}
               />
             ))}
+            </div>
           </div>
         )}
         <CalendarModal
@@ -1721,19 +1712,38 @@ export function AiAssistantPanel({
               actionProposalsByMessageId[message.id] &&
               !hiddenActionMessageIds[message.id] && (
                 <>
-                  <AiProposalFormCard
-                    proposal={actionProposalsByMessageId[message.id]}
-                    onPropose={(values, proposal) => handleProposeFromDraft(message.id, proposal, values)}
-                    onCancel={() => handleCancelAction(message.id)}
-                    isSubmitting={executingActionMessageId === message.id}
-                    isCompleted={Boolean(completedActionMessageIds[message.id])}
-                  />
-                  {completedActionMessageIds[message.id] && (
-                    <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
-                      Proposal created. Next step: either switch to <strong>Workspace</strong> to refine availability/details, or keep using the
-                      <strong> Ask Snooky</strong> box to create or refine another idea.
-                    </div>
-                  )}
+                  {getActionProposalDrafts(actionProposalsByMessageId[message.id]).map((draft, draftIndex, drafts) => {
+                    const scopedDraftKey = getScopedDraftKey(message.id, draft.id);
+                    const scopedProposal = getScopedActionProposal(
+                      actionProposalsByMessageId[message.id],
+                      draft,
+                      drafts.length
+                    );
+                    return (
+                      <div key={scopedDraftKey} className="space-y-2">
+                        {drafts.length > 1 && (
+                          <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                            Idea {draftIndex + 1}
+                          </div>
+                        )}
+                        <AiProposalFormCard
+                          proposal={scopedProposal}
+                          onPropose={(values, proposal) =>
+                            handleProposeFromDraft(message.id, scopedDraftKey, proposal, values)
+                          }
+                          onCancel={draftIndex === drafts.length - 1 ? () => handleCancelAction(message.id) : undefined}
+                          isSubmitting={executingActionKey === scopedDraftKey}
+                          isCompleted={Boolean(completedActionKeys[scopedDraftKey])}
+                        />
+                        {completedActionKeys[scopedDraftKey] && (
+                          <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
+                            Proposal created. Next step: either switch to <strong>Workspace</strong> to refine availability/details, or keep using the
+                            <strong> Ask Snooky</strong> box to create or refine another idea.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </>
               )}
           </div>
@@ -1932,3 +1942,4 @@ export function AiAssistantPanel({
     </div>
   );
 }
+

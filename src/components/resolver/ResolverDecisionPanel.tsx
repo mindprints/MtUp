@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { DecisionOptionList } from '@/components/DecisionOptionList';
 import { useProposals } from '@/lib/ProposalContext';
 import { canConfirmDecision } from '@/lib/permissions';
-import { getConsensusAssessment, getDecisionSummary } from '@/lib/resolverUtils';
+import {
+  collectResolverSeedCandidates,
+  formatResolverOptionLabel,
+  getConsensusAssessment,
+  getDecisionSummary,
+} from '@/lib/resolverUtils';
 import { computeSejourOverlapWindows } from '@/lib/sejourUtils';
 import { storage } from '@/lib/storage';
 import { proposalThreadStore } from '@/lib/proposalThreadStore';
@@ -33,15 +38,9 @@ const DIMENSION_LABELS: Record<DecisionDimension, string> = {
   requirement: 'Requirements',
 };
 
-function normalizeOptionLabel(input: string): string {
-  return input.trim().replace(/\s+/g, ' ');
-}
-
-function splitRequirementText(input: string): string[] {
-  return input
-    .split(/\r?\n|[;,]/)
-    .map((part) => normalizeOptionLabel(part.replace(/^requirements?\s*:\s*/i, '')))
-    .filter(Boolean);
+function sameOptionIdList(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
 }
 
 export function ResolverDecisionPanel({
@@ -114,97 +113,29 @@ export function ResolverDecisionPanel({
         const startDate = option.metadata?.startDate;
         const endDate = option.metadata?.endDate;
         return startDate || endDate
-          ? `${dimension}|${normalizeOptionLabel(option.label)}|${startDate || ''}|${endDate || ''}`
-          : `${dimension}|${normalizeOptionLabel(option.label)}`;
+          ? `${dimension}|${option.label.trim().toLowerCase()}|${startDate || ''}|${endDate || ''}`
+          : `${dimension}|${option.label.trim().toLowerCase()}`;
       })
     );
 
-    const seeds: DecisionOption[] = [];
-    const pushSeed = (label: string, metadata?: Record<string, string>) => {
-      const normalizedLabel = normalizeOptionLabel(label);
-      if (!normalizedLabel) return;
-      const key = metadata?.startDate || metadata?.endDate
-        ? `${dimension}|${normalizedLabel}|${metadata?.startDate || ''}|${metadata?.endDate || ''}`
-        : `${dimension}|${normalizedLabel}`;
-      if (existingKeys.has(key)) return;
-      existingKeys.add(key);
-      seeds.push({
+    const seeds = collectResolverSeedCandidates(proposal, dimension, contributionEntries)
+      .filter((seed) => {
+        const key = seed.metadata?.startDate || seed.metadata?.endDate
+          ? `${dimension}|${seed.label.trim().toLowerCase()}|${seed.metadata?.startDate || ''}|${seed.metadata?.endDate || ''}`
+          : `${dimension}|${seed.label.trim().toLowerCase()}`;
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      })
+      .map((seed) => ({
         id: generateId(),
         proposalId: proposal.id,
         dimension,
-        label: normalizedLabel,
+        label: seed.label,
         createdBy: proposal.createdBy,
         createdAt: proposal.createdAt,
-        ...(metadata ? { metadata } : {}),
-      });
-    };
-
-    if (dimension === 'time') {
-      if (proposal.type === 'sejour' && proposal.specifics?.date) {
-        const dateText = normalizeOptionLabel(proposal.specifics.date);
-        const rangeMatch = dateText.match(/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i);
-        pushSeed(dateText, rangeMatch ? {
-          startDate: rangeMatch[1],
-          endDate: rangeMatch[2] || rangeMatch[1],
-          source: 'proposal-baseline',
-        } : { source: 'proposal-baseline' });
-      }
-      if (proposal.specifics?.time) {
-        pushSeed(proposal.specifics.time, { source: 'proposal-baseline' });
-      }
-      contributionEntries.forEach((entry) => {
-        if (entry.field === 'time' && typeof entry.value.text === 'string') {
-          pushSeed(entry.value.text, { source: 'proposal-thread' });
-        }
-        if (
-          proposal.type === 'sejour' &&
-          entry.field === 'date' &&
-          (typeof entry.value.dateText === 'string' || typeof entry.value.text === 'string')
-        ) {
-          const dateText =
-            typeof entry.value.dateText === 'string'
-              ? entry.value.dateText
-              : String(entry.value.text);
-          const normalized = normalizeOptionLabel(dateText);
-          const rangeMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i);
-          pushSeed(normalized, rangeMatch ? {
-            startDate: rangeMatch[1],
-            endDate: rangeMatch[2] || rangeMatch[1],
-            source: 'proposal-thread',
-          } : { source: 'proposal-thread' });
-        }
-      });
-    }
-
-    if (dimension === 'place') {
-      if (proposal.specifics?.location) {
-        pushSeed(proposal.specifics.location, { source: 'proposal-baseline' });
-      }
-      contributionEntries.forEach((entry) => {
-        if (entry.field === 'place' && typeof entry.value.text === 'string') {
-          pushSeed(entry.value.text, { source: 'proposal-thread' });
-        }
-      });
-    }
-
-    if (dimension === 'requirement') {
-      splitRequirementText(proposal.specifics?.requirements || '').forEach((label) =>
-        pushSeed(label, { source: 'proposal-baseline' })
-      );
-      (proposal.comments || []).forEach((comment) => {
-        if (!/requirement|require|need/i.test(comment.text)) return;
-        splitRequirementText(comment.text).forEach((label) =>
-          pushSeed(label, { source: 'proposal-comments' })
-        );
-      });
-      contributionEntries.forEach((entry) => {
-        if (entry.field === 'requirements' && typeof entry.value.text === 'string') {
-          splitRequirementText(entry.value.text).forEach((label) =>
-            pushSeed(label, { source: 'proposal-thread' })
-          );
-        }
-      });
-    }
+        ...(seed.metadata ? { metadata: seed.metadata } : {}),
+      }));
 
     if (seeds.length > 0) {
       seeds.forEach((seed) => addDecisionOption(seed));
@@ -223,18 +154,41 @@ export function ResolverDecisionPanel({
   ]);
 
   useEffect(() => {
+    const seen = new Set<string>();
+    const duplicateIds = options
+      .filter((option) => {
+        const startDate = option.metadata?.startDate;
+        const endDate = option.metadata?.endDate;
+        const key = startDate || endDate
+          ? `${dimension}|${option.label.trim().toLowerCase()}|${startDate || ''}|${endDate || ''}`
+          : `${dimension}|${option.label.trim().toLowerCase()}`;
+        if (seen.has(key)) return true;
+        seen.add(key);
+        return false;
+      })
+      .map((option) => option.id);
+
+    if (duplicateIds.length === 0) return;
+    duplicateIds.forEach((optionId) => deleteDecisionOption(optionId));
+  }, [deleteDecisionOption, dimension, options]);
+
+  useEffect(() => {
+    let nextOptionIds: string[] = [];
+
     if (mode === 'multi') {
-      setConfirmationOptionIds(currentUserVote?.selectedOptionIds || []);
-      return;
+      nextOptionIds = currentUserVote?.selectedOptionIds || [];
+    } else {
+      const ranked = currentUserVote?.rankedOptionIds || [];
+      if (ranked.length > 0) {
+        nextOptionIds = [ranked[0]];
+      } else {
+        nextOptionIds = options[0] ? [options[0].id] : [];
+      }
     }
 
-    const ranked = currentUserVote?.rankedOptionIds || [];
-    if (ranked.length > 0) {
-      setConfirmationOptionIds([ranked[0]]);
-      return;
-    }
-
-    setConfirmationOptionIds(options[0] ? [options[0].id] : []);
+    setConfirmationOptionIds((previous) =>
+      sameOptionIdList(previous, nextOptionIds) ? previous : nextOptionIds
+    );
   }, [currentUserVote, mode, options]);
 
   const handleModeChange = (nextMode: VotingMode) => {
@@ -517,6 +471,10 @@ export function ResolverDecisionPanel({
             Add
           </button>
         </div>
+        <p className="text-xs text-gray-500 dark:text-slate-400">
+          Tip: notes like `time: 19:00`, `place: Hornstull`, or `requirements: quiet table`
+          are auto-imported into resolver options.
+        </p>
 
         {proposal.type === 'sejour' && dimension === 'time' && (
           <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-900 dark:bg-indigo-950/30">
@@ -563,7 +521,7 @@ export function ResolverDecisionPanel({
                   key={candidate.option.id}
                   className="flex items-center justify-between text-xs text-gray-700 dark:text-slate-300"
                 >
-                  <span>{candidate.option.label}</span>
+                  <span>{formatResolverOptionLabel(candidate.option, dimension)}</span>
                   <span>
                     Score: {candidate.score} | First-choice: {candidate.firstChoiceCount}
                   </span>
@@ -590,7 +548,7 @@ export function ResolverDecisionPanel({
                     onChange={() => toggleConfirmationOption(option.id)}
                     className="h-4 w-4"
                   />
-                  <span>{option.label}</span>
+                  <span>{formatResolverOptionLabel(option, dimension)}</span>
                 </label>
               ))}
             </div>

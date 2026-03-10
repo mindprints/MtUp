@@ -8,11 +8,11 @@ import { SuggestAlternativesModal } from '@/components/ai-assistant/SuggestAlter
 import { ProposalCommentsSection } from '@/components/ai-assistant/ProposalCommentsSection';
 import {
     ProposalCardDrafts,
+    getProposalTimeSummary,
     proposalCardTheme,
     ProposalFlag,
     userInitials,
     parseIsoDatesFromText,
-    formatTo24HourTimeText,
     formatProposalBaseline,
 } from '@/components/ai-assistant/shared';
 
@@ -82,6 +82,7 @@ export function ProposalCard({
     userNameById,
 }: ProposalCardProps) {
     const theme = proposalCardTheme(index);
+    const isConfirmed = proposal.status === 'confirmed';
     const contributions = proposalThreadStore.listForProposal(proposal.id);
     const userNames = new Map(displayGroupUsers.map((u) => [u.id, u.name]));
     const fieldChanges = contributions.filter((c) => c.kind === 'field_change');
@@ -89,13 +90,26 @@ export function ProposalCard({
     const timeChanges = fieldChanges.filter((c) => c.field === 'time');
     const placeChanges = fieldChanges.filter((c) => c.field === 'place');
 
+    const baselineDateText = proposal.specifics?.date || '';
+    const originalCalendarDates = parseIsoDatesFromText(baselineDateText);
+
+    const hasSavedAcceptance = (availability?: Availability) => {
+        if (!availability) return false;
+        if (originalCalendarDates.length === 0) {
+            return availability.dates.length > 0;
+        }
+        return originalCalendarDates.every((date) => availability.dates.includes(date));
+    };
+
     const participantRows = displayGroupUsers.map((member) => {
         const memberContributions = contributions.filter((c) => c.userId === member.id);
-        const hasAffirmation = memberContributions.some((c) => c.kind === 'affirmation');
+        const availability = proposalAvailabilities.find((a) => a.userId === member.id);
+        const hasAffirmation =
+            hasSavedAcceptance(availability) ||
+            memberContributions.some((c) => c.kind === 'affirmation');
         const hasDateDelta = memberContributions.some(
             (c) => c.kind === 'field_change' && c.field === 'date'
         );
-        const availability = proposalAvailabilities.find((a) => a.userId === member.id);
         return {
             member,
             hasAffirmation,
@@ -104,26 +118,22 @@ export function ProposalCard({
         };
     });
 
-    const myHasExplicitAffirmation = proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
+    const myAvailability = proposalAvailabilities.find((a) => a.userId === userId);
+    const myHasExplicitAffirmation =
+        hasSavedAcceptance(myAvailability) ||
+        proposalThreadStore.hasExplicitAffirmation(proposal.id, userId);
     const shouldShowAffirmButton = !myHasExplicitAffirmation;
     const subscribedCount = participantRows.filter((row) => row.hasAffirmation).length;
     const proposalAuthorId = proposal.authoredBy || proposal.createdBy;
     const proposalCreatorName = userNames.get(proposalAuthorId) || 'Unknown';
     const resolverMetadata = proposal.specifics?.resolver;
 
-    const proposerNote =
-        proposal.comments
-            ?.filter((comment) => comment.userId === proposalAuthorId)
-            .slice(-1)[0]
-            ?.text?.trim() || 'No proposer notes yet.';
     const requirementsNote =
         proposal.specifics?.requirements ||
         proposal.comments
             ?.find((comment) => /requirement|require|need/i.test(comment.text))
             ?.text?.trim() || 'No requirements listed.';
 
-    const baselineDateText = proposal.specifics?.date || '';
-    const originalCalendarDates = parseIsoDatesFromText(baselineDateText);
     const alternativeCalendarDates = Array.from(
         new Set(
             dateChanges.flatMap((change) => {
@@ -140,6 +150,12 @@ export function ProposalCard({
 
     const thumbnailBusy = Boolean(thumbnailGenerating);
     const thumbnailDebug = getThumbnailGeneratorDebugState();
+    const cardShellClass = isConfirmed
+        ? 'border-emerald-500 bg-[linear-gradient(160deg,rgba(220,252,231,0.96),rgba(240,253,244,0.92),rgba(255,255,255,0.98))] dark:border-emerald-700 dark:bg-[linear-gradient(160deg,rgba(6,78,59,0.55),rgba(2,44,34,0.62),rgba(15,23,42,0.96))]'
+        : theme.shell;
+    const summaryPanelClass = isConfirmed
+        ? 'mt-2 space-y-2.5 rounded-lg border border-emerald-200 bg-white/85 p-2.5 text-sm leading-6 text-gray-800 shadow-sm dark:border-emerald-900/50 dark:bg-slate-950/75 dark:text-slate-200'
+        : 'mt-2 space-y-2.5 rounded-lg border border-white/70 bg-white/70 p-2.5 text-sm leading-6 text-gray-800 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200';
 
     const handleUpdateDraft = (updates: Partial<ProposalCardDrafts[string]>) => {
         setDraft({
@@ -148,6 +164,8 @@ export function ProposalCard({
                 startDateSuggestion: '',
                 endDateSuggestion: '',
                 timeSuggestion: '',
+                startTimeSuggestion: '',
+                endTimeSuggestion: '',
                 placeSuggestion: '',
             }),
             ...updates,
@@ -179,6 +197,11 @@ export function ProposalCard({
                         <p className="text-base font-semibold text-white drop-shadow-sm">{proposal.title}</p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-white/85">
                             <span>by {proposalCreatorName}</span>
+                            {isConfirmed && (
+                                <span className="rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                                    Confirmed
+                                </span>
+                            )}
                             {resolverMetadata?.variantLabel && (
                                 <span className="rounded-full bg-sky-500/85 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
                                     {resolverMetadata.variantLabel}
@@ -216,16 +239,47 @@ export function ProposalCard({
         </div>
     );
 
+    const statusFlags = (
+        <div className="flex flex-wrap gap-1.5">
+            {proposal.status === 'confirmed' && (
+                <ProposalFlag label="confirmed" tone="good" />
+            )}
+            {resolverMetadata?.variantLabel && (
+                <ProposalFlag label={resolverMetadata.variantLabel} tone="info" />
+            )}
+            <ProposalFlag label="proposer auto-in" tone="good" />
+            {dateChanges.length > 0 && (
+                <ProposalFlag
+                    label={`${dateChanges.length} date idea${dateChanges.length > 1 ? 's' : ''}`}
+                    tone="warm"
+                />
+            )}
+            {timeChanges.length > 0 && (
+                <ProposalFlag
+                    label={`${timeChanges.length} time idea${timeChanges.length > 1 ? 's' : ''}`}
+                    tone="info"
+                />
+            )}
+            {placeChanges.length > 0 && (
+                <ProposalFlag
+                    label={`${placeChanges.length} place idea${placeChanges.length > 1 ? 's' : ''}`}
+                    tone="info"
+                />
+            )}
+        </div>
+    );
+
     if (!compact) {
         return (
             <div
                 key={`${proposal.id}-${proposalFeedRefreshTick}`}
-                className={`h-full min-h-full snap-start overflow-hidden rounded-[1rem] border-2 shadow ${theme.shell} flex flex-col`}
+                className={`h-full min-h-full snap-start overflow-hidden rounded-[1rem] border-2 shadow ${cardShellClass} flex flex-col`}
             >
                 {imageHeader}
                 <div className="flex flex-1 flex-col p-2.5">
                     {subscribedAvatars}
-                    <div className="mt-2 space-y-2.5 rounded-lg border border-white/70 bg-white/70 p-2.5 text-sm leading-6 text-gray-800 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200">
+                    {statusFlags}
+                    <div className={summaryPanelClass}>
                         <div className="grid grid-cols-1 gap-2">
                             <div className="space-y-1">
                                 <div>
@@ -262,7 +316,7 @@ export function ProposalCard({
                             <div className="space-y-1">
                                 <div>
                                     <span className="font-semibold">Time:</span>{' '}
-                                    {formatTo24HourTimeText(proposal.specifics?.time || 'Not set')}
+                                    {getProposalTimeSummary(proposal) || 'Not set'}
                                 </div>
                                 {timeChanges.length > 0 && (
                                     <div className="space-y-1 pl-2">
@@ -281,7 +335,7 @@ export function ProposalCard({
                                                             {userInitials(userNames.get(change.userId) || '?')}:
                                                         </span>{' '}
                                                         {typeof change.value.text === 'string'
-                                                            ? formatTo24HourTimeText(String(change.value.text))
+                                                            ? String(change.value.text)
                                                             : 'unspecified'}
                                                     </span>
                                                 </label>
@@ -321,9 +375,6 @@ export function ProposalCard({
                                     </div>
                                 )}
                             </div>
-                        </div>
-                        <div>
-                            <span className="font-semibold">Proposer notes:</span> {proposerNote}
                         </div>
                         <div>
                             <span className="font-semibold">Requirements:</span> {requirementsNote}
@@ -416,35 +467,12 @@ export function ProposalCard({
     return (
         <div
             key={`${proposal.id}-${proposalFeedRefreshTick}`}
-            className={`snap-start overflow-hidden rounded-[1rem] border shadow-sm ${theme.shell} flex min-h-[70vh] flex-col`}
+            className={`snap-start overflow-hidden rounded-[1rem] border-2 shadow-sm ${cardShellClass} flex min-h-[70vh] flex-col`}
         >
             {imageHeader}
             <div className="flex flex-1 flex-col p-2.5">
                 {subscribedAvatars}
-                <div className="flex flex-wrap gap-1.5">
-                    {resolverMetadata?.variantLabel && (
-                        <ProposalFlag label={resolverMetadata.variantLabel} tone="info" />
-                    )}
-                    <ProposalFlag label="proposer auto-in" tone="good" />
-                    {dateChanges.length > 0 && (
-                        <ProposalFlag
-                            label={`${dateChanges.length} date idea${dateChanges.length > 1 ? 's' : ''}`}
-                            tone="warm"
-                        />
-                    )}
-                    {timeChanges.length > 0 && (
-                        <ProposalFlag
-                            label={`${timeChanges.length} time idea${timeChanges.length > 1 ? 's' : ''}`}
-                            tone="info"
-                        />
-                    )}
-                    {placeChanges.length > 0 && (
-                        <ProposalFlag
-                            label={`${placeChanges.length} place idea${placeChanges.length > 1 ? 's' : ''}`}
-                            tone="info"
-                        />
-                    )}
-                </div>
+                {statusFlags}
 
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {shouldShowAffirmButton ? (

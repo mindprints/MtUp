@@ -1,0 +1,350 @@
+- generic [ref=e25]:
+  - banner [ref=e26]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - heading "Snookey's Here to Help." [level=1] [ref=e30]
+        - paragraph [ref=e31]: Welcome, Alice (Admin)
+      - generic [ref=e32]:
+        - group [ref=e33]:
+          - generic "Instructions" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Light
+          - checkbox "Toggle dark mode" [ref=e38]
+        - button "Sign out" [ref=e41] [cursor=pointer]
+  - main [ref=e42]:
+    - generic [ref=e44]:
+      - generic [ref=e46]: 09:41
+      - generic [ref=e52]:
+        - generic [ref=e54]:
+          - button "Admin" [ref=e55] [cursor=pointer]
+          - button "Resolver" [ref=e56] [cursor=pointer]
+          - button "Snooky" [ref=e57] [cursor=pointer]
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e65]:
+                - generic [ref=e66]: 🎉
+              - generic [ref=e69]:
+                - paragraph [ref=e70]: Coffee break
+                - generic [ref=e72]: by Alice
+            - generic [ref=e73]:
+              - generic [ref=e74]:
+                - generic [ref=e75]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e76]':
+                  - text: A
+                  - generic [ref=e77]: IN
+              - generic [ref=e78]:
+                - generic [ref=e79]:
+                  - generic [ref=e81]: "Date: 2026-03-06"
+                  - generic [ref=e83]: "Time: Not set"
+                  - generic [ref=e85]: "Place: Not set"
+                - generic [ref=e86]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e87]: "Requirements: No requirements listed."
+                - generic [ref=e88]:
+                  - paragraph [ref=e89]: Comments
+                  - paragraph [ref=e90]: No comments yet.
+                  - generic [ref=e91]:
+                    - textbox "Add a comment" [ref=e92]
+                    - button "Add" [disabled] [ref=e93]
+                - paragraph [ref=e94]: No alternatives suggested yet.
+              - generic [ref=e96]:
+                - button "I'm available as proposed" [ref=e97] [cursor=pointer]
+                - button "Calendar" [ref=e98] [cursor=pointer]
+                - button "To My Calendar" [ref=e99] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e100] [cursor=pointer]
+          - generic [ref=e101]:
+            - generic [ref=e102]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e104]:
+                - generic [ref=e105]: 🎉
+              - generic [ref=e108]:
+                - paragraph [ref=e109]: Weekend in Paris
+                - generic [ref=e111]: by Alice
+            - generic [ref=e112]:
+              - generic [ref=e113]:
+                - generic [ref=e114]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e115]':
+                  - text: A
+                  - generic [ref=e116]: IN
+              - generic [ref=e117]:
+                - generic [ref=e118]:
+                  - generic [ref=e120]: "Date: 2026-03-07 to 2026-03-08"
+                  - generic [ref=e122]: "Time: Not set"
+                  - generic [ref=e124]: "Place: Paris"
+                - generic [ref=e125]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e126]: "Requirements: No requirements listed."
+                - generic [ref=e127]:
+                  - paragraph [ref=e128]: Comments
+                  - paragraph [ref=e129]: No comments yet.
+                  - generic [ref=e130]:
+                    - textbox "Add a comment" [ref=e131]
+                    - button "Add" [disabled] [ref=e132]
+                - paragraph [ref=e133]: No alternatives suggested yet.
+              - generic [ref=e135]:
+                - button "I'm available as proposed" [ref=e136] [cursor=pointer]
+                - button "Calendar" [ref=e137] [cursor=pointer]
+                - button "To My Calendar" [ref=e138] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e139] [cursor=pointer]
+          - generic [ref=e140]:
+            - generic [ref=e141]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e143]:
+                - generic [ref=e144]: 🎲
+              - generic [ref=e147]:
+                - paragraph [ref=e148]: Resolver Variant E2E 1772834897319 (Variant A)
+                - generic [ref=e149]:
+                  - generic [ref=e150]: by Alice
+                  - generic [ref=e151]: Variant A
+            - generic [ref=e152]:
+              - generic [ref=e153]:
+                - generic [ref=e154]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e155]':
+                  - text: A
+                  - generic [ref=e156]: IN
+              - generic [ref=e157]:
+                - generic [ref=e158]:
+                  - generic [ref=e160]: "Date: Not set"
+                  - generic [ref=e162]: "Time: 18:00"
+                  - generic [ref=e164]: "Place: Cafe A"
+                - generic [ref=e165]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e166]: "Requirements: Quiet table"
+                - generic [ref=e167]: "Resolver fork: from Resolver Variant E2E 1772834897319 | Time: 18:00 | Place: Cafe A"
+                - generic [ref=e168]:
+                  - paragraph [ref=e169]: Comments
+                  - paragraph [ref=e170]: No comments yet.
+                  - generic [ref=e171]:
+                    - textbox "Add a comment" [ref=e172]
+                    - button "Add" [disabled] [ref=e173]
+                - paragraph [ref=e174]: No alternatives suggested yet.
+              - generic [ref=e176]:
+                - button "I'm available as proposed" [ref=e177] [cursor=pointer]
+                - button "Calendar" [ref=e178] [cursor=pointer]
+                - button "To My Calendar" [ref=e179] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e180] [cursor=pointer]
+          - generic [ref=e181]:
+            - generic [ref=e182]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e184]:
+                - generic [ref=e185]: 🎲
+              - generic [ref=e188]:
+                - paragraph [ref=e189]: Resolver Variant E2E 1772834897319 (Variant B)
+                - generic [ref=e190]:
+                  - generic [ref=e191]: by Alice
+                  - generic [ref=e192]: Variant B
+            - generic [ref=e193]:
+              - generic [ref=e194]:
+                - generic [ref=e195]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e196]':
+                  - text: A
+                  - generic [ref=e197]: IN
+              - generic [ref=e198]:
+                - generic [ref=e199]:
+                  - generic [ref=e201]: "Date: Not set"
+                  - generic [ref=e203]: "Time: 18:00"
+                  - generic [ref=e205]: "Place: Cafe B"
+                - generic [ref=e206]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e207]: "Requirements: Quiet table"
+                - generic [ref=e208]: "Resolver fork: from Resolver Variant E2E 1772834897319 | Time: 18:00 | Place: Cafe B"
+                - generic [ref=e209]:
+                  - paragraph [ref=e210]: Comments
+                  - paragraph [ref=e211]: No comments yet.
+                  - generic [ref=e212]:
+                    - textbox "Add a comment" [ref=e213]
+                    - button "Add" [disabled] [ref=e214]
+                - paragraph [ref=e215]: No alternatives suggested yet.
+              - generic [ref=e217]:
+                - button "I'm available as proposed" [ref=e218] [cursor=pointer]
+                - button "Calendar" [ref=e219] [cursor=pointer]
+                - button "To My Calendar" [ref=e220] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e221] [cursor=pointer]
+          - generic [ref=e222]:
+            - generic [ref=e223]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e225]:
+                - generic [ref=e226]: 🎲
+              - generic [ref=e229]:
+                - paragraph [ref=e230]: Resolver Variant E2E 1772834897319
+                - generic [ref=e232]: by Alice
+            - generic [ref=e233]:
+              - generic [ref=e234]:
+                - generic [ref=e235]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e236]':
+                  - text: A
+                  - generic [ref=e237]: IN
+              - generic [ref=e238]:
+                - generic [ref=e239]:
+                  - generic [ref=e241]: "Date: Not set"
+                  - generic [ref=e243]: "Time: Not set"
+                  - generic [ref=e245]: "Place: Not set"
+                - generic [ref=e246]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e247]: "Requirements: Quiet table"
+                - generic [ref=e248]:
+                  - paragraph [ref=e249]: Comments
+                  - paragraph [ref=e250]: No comments yet.
+                  - generic [ref=e251]:
+                    - textbox "Add a comment" [ref=e252]
+                    - button "Add" [disabled] [ref=e253]
+                - paragraph [ref=e254]: No alternatives suggested yet.
+              - generic [ref=e256]:
+                - button "I'm available as proposed" [ref=e257] [cursor=pointer]
+                - button "Calendar" [ref=e258] [cursor=pointer]
+                - button "To My Calendar" [ref=e259] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e260] [cursor=pointer]
+          - generic [ref=e261]:
+            - generic [ref=e262]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e264]:
+                - generic [ref=e265]: 🎯
+              - generic [ref=e268]:
+                - paragraph [ref=e269]: Resolver Majority E2E 1772834897319
+                - generic [ref=e271]: by Unknown
+            - generic [ref=e272]:
+              - generic [ref=e273]:
+                - generic [ref=e274]: Subscribed 0/1
+                - 'generic "Alice: not subscribed" [ref=e275]': A
+              - generic [ref=e276]:
+                - generic [ref=e277]:
+                  - generic [ref=e279]: "Date: Not set"
+                  - generic [ref=e281]: "Time: 18:00"
+                  - generic [ref=e283]: "Place: Cafe A"
+                - generic [ref=e284]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e285]: "Requirements: No requirements listed."
+                - generic [ref=e286]:
+                  - paragraph [ref=e287]: Comments
+                  - paragraph [ref=e288]: No comments yet.
+                  - generic [ref=e289]:
+                    - textbox "Add a comment" [ref=e290]
+                    - button "Add" [disabled] [ref=e291]
+                - paragraph [ref=e292]: No alternatives suggested yet.
+              - generic [ref=e294]:
+                - button "I'm available as proposed" [ref=e295] [cursor=pointer]
+                - button "Calendar" [ref=e296] [cursor=pointer]
+                - button "To My Calendar" [ref=e297] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e298] [cursor=pointer]
+          - generic [ref=e299]:
+            - generic [ref=e300]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e302]:
+                - generic [ref=e303]: 🎲
+              - generic [ref=e306]:
+                - paragraph [ref=e307]: Resolver Variant E2E 1772834535513 (Variant B)
+                - generic [ref=e308]:
+                  - generic [ref=e309]: by Alice
+                  - generic [ref=e310]: Variant B
+            - generic [ref=e311]:
+              - generic [ref=e312]:
+                - generic [ref=e313]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e314]':
+                  - text: A
+                  - generic [ref=e315]: IN
+              - generic [ref=e316]:
+                - generic [ref=e317]:
+                  - generic [ref=e319]: "Date: Not set"
+                  - generic [ref=e321]: "Time: 18:00"
+                  - generic [ref=e323]: "Place: Cafe B"
+                - generic [ref=e324]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e325]: "Requirements: Quiet table"
+                - generic [ref=e326]: "Resolver fork: from Resolver Variant E2E 1772834535513 | Time: 18:00 | Place: Cafe B"
+                - generic [ref=e327]:
+                  - paragraph [ref=e328]: Comments
+                  - paragraph [ref=e329]: No comments yet.
+                  - generic [ref=e330]:
+                    - textbox "Add a comment" [ref=e331]
+                    - button "Add" [disabled] [ref=e332]
+                - paragraph [ref=e333]: No alternatives suggested yet.
+              - generic [ref=e335]:
+                - button "I'm available as proposed" [ref=e336] [cursor=pointer]
+                - button "Calendar" [ref=e337] [cursor=pointer]
+                - button "To My Calendar" [ref=e338] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e339] [cursor=pointer]
+          - generic [ref=e340]:
+            - generic [ref=e341]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e343]:
+                - generic [ref=e344]: 🎲
+              - generic [ref=e347]:
+                - paragraph [ref=e348]: Resolver Variant E2E 1772834535513 (Variant A)
+                - generic [ref=e349]:
+                  - generic [ref=e350]: by Alice
+                  - generic [ref=e351]: Variant A
+            - generic [ref=e352]:
+              - generic [ref=e353]:
+                - generic [ref=e354]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e355]':
+                  - text: A
+                  - generic [ref=e356]: IN
+              - generic [ref=e357]:
+                - generic [ref=e358]:
+                  - generic [ref=e360]: "Date: Not set"
+                  - generic [ref=e362]: "Time: 18:00"
+                  - generic [ref=e364]: "Place: Cafe A"
+                - generic [ref=e365]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e366]: "Requirements: Quiet table"
+                - generic [ref=e367]: "Resolver fork: from Resolver Variant E2E 1772834535513 | Time: 18:00 | Place: Cafe A"
+                - generic [ref=e368]:
+                  - paragraph [ref=e369]: Comments
+                  - paragraph [ref=e370]: No comments yet.
+                  - generic [ref=e371]:
+                    - textbox "Add a comment" [ref=e372]
+                    - button "Add" [disabled] [ref=e373]
+                - paragraph [ref=e374]: No alternatives suggested yet.
+              - generic [ref=e376]:
+                - button "I'm available as proposed" [ref=e377] [cursor=pointer]
+                - button "Calendar" [ref=e378] [cursor=pointer]
+                - button "To My Calendar" [ref=e379] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e380] [cursor=pointer]
+          - generic [ref=e381]:
+            - generic [ref=e382]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e384]:
+                - generic [ref=e385]: 🎯
+              - generic [ref=e388]:
+                - paragraph [ref=e389]: Resolver Majority E2E 1772834535520
+                - generic [ref=e391]: by Unknown
+            - generic [ref=e392]:
+              - generic [ref=e393]:
+                - generic [ref=e394]: Subscribed 0/1
+                - 'generic "Alice: not subscribed" [ref=e395]': A
+              - generic [ref=e396]:
+                - generic [ref=e397]:
+                  - generic [ref=e399]: "Date: Not set"
+                  - generic [ref=e401]: "Time: 18:00"
+                  - generic [ref=e403]: "Place: Cafe A"
+                - generic [ref=e404]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e405]: "Requirements: No requirements listed."
+                - generic [ref=e406]:
+                  - paragraph [ref=e407]: Comments
+                  - paragraph [ref=e408]: No comments yet.
+                  - generic [ref=e409]:
+                    - textbox "Add a comment" [ref=e410]
+                    - button "Add" [disabled] [ref=e411]
+                - paragraph [ref=e412]: No alternatives suggested yet.
+              - generic [ref=e414]:
+                - button "I'm available as proposed" [ref=e415] [cursor=pointer]
+                - button "Calendar" [ref=e416] [cursor=pointer]
+                - button "To My Calendar" [ref=e417] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e418] [cursor=pointer]
+          - generic [ref=e419]:
+            - generic [ref=e420]:
+              - generic "Thumbnail placeholder (can be replaced with image)" [ref=e422]:
+                - generic [ref=e423]: 🎲
+              - generic [ref=e426]:
+                - paragraph [ref=e427]: Resolver Variant E2E 1772834535513
+                - generic [ref=e429]: by Alice
+            - generic [ref=e430]:
+              - generic [ref=e431]:
+                - generic [ref=e432]: Subscribed 1/1
+                - 'generic "Alice: subscribed" [ref=e433]':
+                  - text: A
+                  - generic [ref=e434]: IN
+              - generic [ref=e435]:
+                - generic [ref=e436]:
+                  - generic [ref=e438]: "Date: Not set"
+                  - generic [ref=e440]: "Time: Not set"
+                  - generic [ref=e442]: "Place: Not set"
+                - generic [ref=e443]: "Proposer notes: No proposer notes yet."
+                - generic [ref=e444]: "Requirements: Quiet table"
+                - generic [ref=e445]:
+                  - paragraph [ref=e446]: Comments
+                  - paragraph [ref=e447]: No comments yet.
+                  - generic [ref=e448]:
+                    - textbox "Add a comment" [ref=e449]
+                    - button "Add" [disabled] [ref=e450]
+                - paragraph [ref=e451]: No alternatives suggested yet.
+              - generic [ref=e453]:
+                - button "I'm available as proposed" [ref=e454] [cursor=pointer]
+                - button "Calendar" [ref=e455] [cursor=pointer]
+                - button "To My Calendar" [ref=e456] [cursor=pointer]
+                - button "Suggest Alternatives" [ref=e457] [cursor=pointer]

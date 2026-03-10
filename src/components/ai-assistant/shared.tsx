@@ -7,6 +7,8 @@ export type ProposalCardDrafts = Record<
     startDateSuggestion: string;
     endDateSuggestion: string;
     timeSuggestion: string;
+    startTimeSuggestion: string;
+    endTimeSuggestion: string;
     placeSuggestion: string;
     isSuggestModalOpen?: boolean;
   }
@@ -22,8 +24,20 @@ export type ProposalFlowEditDraft = {
   startDate: string;
   endDate: string;
   time: string;
+  startTime: string;
+  endTime: string;
   place: string;
 };
+
+export const TIME_INPUT_STEP_SECONDS = 15 * 60;
+
+export const TIME_INPUT_OPTIONS = Array.from({ length: 24 * 4 }, (_, index) => {
+  const totalMinutes = index * 15;
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  const value = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  return { value, label: value };
+});
 
 export function parseIsoDatesFromText(input: string): string[] {
   const trimmed = input.trim();
@@ -76,13 +90,202 @@ export function formatTo24HourTimeText(input: string): string {
   });
 }
 
+export function normalizeTimeInputValue(input: string): string {
+  const trimmed = formatTo24HourTimeText(input).trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return input;
+
+  const totalMinutes = Number(match[1]) * 60 + Number(match[2]);
+  const roundedMinutes = Math.round(totalMinutes / 15) * 15;
+  const normalizedMinutes = Math.min(roundedMinutes, (24 * 60) - 15);
+  const hour = Math.floor(normalizedMinutes / 60);
+  const minute = normalizedMinutes % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+export function QuarterHourTimeSelect({
+  value,
+  onChange,
+  ariaLabel,
+  className,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const normalizedValue = normalizeTimeInputValue(value);
+  return (
+    <select
+      value={normalizedValue}
+      onChange={(event) => onChange(event.target.value)}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      className={className}
+    >
+      <option value="">Select time</option>
+      {TIME_INPUT_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export function formatSejourTimeText(startTime: string, endTime: string): string {
+  const normalizedStartTime = normalizeTimeInputValue(startTime).trim();
+  const normalizedEndTime = normalizeTimeInputValue(endTime).trim();
+  if (!normalizedStartTime && !normalizedEndTime) return '';
+  if (normalizedStartTime && normalizedEndTime) {
+    return `${normalizedStartTime} -> ${normalizedEndTime}`;
+  }
+  return normalizedStartTime || normalizedEndTime;
+}
+
+export function parseSejourTimeText(input: string): { startTime: string; endTime: string } {
+  const normalized = formatTo24HourTimeText(input || '');
+  const matches = normalized.match(/\b([01]\d|2[0-3]):([0-5]\d)\b/g) || [];
+  return {
+    startTime: normalizeTimeInputValue(matches[0] || ''),
+    endTime: normalizeTimeInputValue(matches[1] || ''),
+  };
+}
+
+type SejourDateTimeRowProps = {
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  onStartDateChange: (value: string) => void;
+  onEndDateChange: (value: string) => void;
+  onStartTimeChange: (value: string) => void;
+  onEndTimeChange: (value: string) => void;
+  startDateLabel: string;
+  startTimeLabel: string;
+  endDateLabel: string;
+  endTimeLabel: string;
+  startDateAriaLabel: string;
+  startTimeAriaLabel: string;
+  endDateAriaLabel: string;
+  endTimeAriaLabel: string;
+  dateInputClassName: string;
+  timeSelectClassName: string;
+  labelClassName?: string;
+  separatorClassName?: string;
+  disabled?: boolean;
+};
+
+export function SejourDateTimeRow({
+  startDate,
+  endDate,
+  startTime,
+  endTime,
+  onStartDateChange,
+  onEndDateChange,
+  onStartTimeChange,
+  onEndTimeChange,
+  startDateLabel,
+  startTimeLabel,
+  endDateLabel,
+  endTimeLabel,
+  startDateAriaLabel,
+  startTimeAriaLabel,
+  endDateAriaLabel,
+  endTimeAriaLabel,
+  dateInputClassName,
+  timeSelectClassName,
+  labelClassName = 'text-xs text-gray-700 dark:text-slate-200',
+  separatorClassName = 'text-xs font-semibold text-gray-400 dark:text-slate-500',
+  disabled = false,
+}: SejourDateTimeRowProps) {
+  return (
+    <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-end md:gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
+        <label className={labelClassName}>
+          <span className="mb-1 block">{startDateLabel}</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(event) => onStartDateChange(event.target.value)}
+            aria-label={startDateAriaLabel}
+            disabled={disabled}
+            className={dateInputClassName}
+          />
+        </label>
+        <div className={`hidden pb-2 md:flex md:items-center md:justify-center ${separatorClassName}`}>-</div>
+        <label className={labelClassName}>
+          <span className="mb-1 block">{startTimeLabel}</span>
+          <QuarterHourTimeSelect
+            value={startTime}
+            onChange={onStartTimeChange}
+            ariaLabel={startTimeAriaLabel}
+            disabled={disabled}
+            className={timeSelectClassName}
+          />
+        </label>
+      </div>
+      <div className={`hidden md:flex md:items-center md:justify-center md:pb-2 ${separatorClassName}`}>---</div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
+        <label className={labelClassName}>
+          <span className="mb-1 block">{endDateLabel}</span>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={(event) => onEndDateChange(event.target.value)}
+            aria-label={endDateAriaLabel}
+            disabled={disabled}
+            className={dateInputClassName}
+          />
+        </label>
+        <div className={`hidden pb-2 md:flex md:items-center md:justify-center ${separatorClassName}`}>-</div>
+        <label className={labelClassName}>
+          <span className="mb-1 block">{endTimeLabel}</span>
+          <QuarterHourTimeSelect
+            value={endTime}
+            onChange={onEndTimeChange}
+            ariaLabel={endTimeAriaLabel}
+            disabled={disabled}
+            className={timeSelectClassName}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export function formatProposalBaseline(proposal: Proposal): string {
   const parts = [
     proposal.specifics?.date ? `Date: ${proposal.specifics.date}` : null,
-    proposal.specifics?.time ? `Time: ${proposal.specifics.time}` : null,
+    getProposalTimeSummary(proposal) ? `Time: ${getProposalTimeSummary(proposal)}` : null,
     proposal.specifics?.location ? `Place: ${proposal.specifics.location}` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' | ') : 'No logistics set yet';
+}
+
+export function getProposalStartTime(proposal: Proposal): string {
+  if (proposal.type === 'sejour') {
+    return normalizeTimeInputValue(proposal.specifics?.startTime || proposal.specifics?.time || '');
+  }
+  return normalizeTimeInputValue(proposal.specifics?.time || '');
+}
+
+export function getProposalEndTime(proposal: Proposal): string {
+  if (proposal.type === 'sejour') {
+    return normalizeTimeInputValue(proposal.specifics?.endTime || proposal.specifics?.time || '');
+  }
+  return normalizeTimeInputValue(proposal.specifics?.time || '');
+}
+
+export function getProposalTimeSummary(proposal: Proposal): string {
+  if (proposal.type === 'sejour') {
+    return formatSejourTimeText(getProposalStartTime(proposal), getProposalEndTime(proposal));
+  }
+  return getProposalStartTime(proposal);
 }
 
 export function proposalCardTheme(index: number) {
@@ -148,11 +351,15 @@ export function userInitials(name: string): string {
 
 export function buildProposalFlowEditDraft(proposal: Proposal): ProposalFlowEditDraft {
   const parsedRange = parseDateRangeFromText(proposal.specifics?.date || '');
+  const startTime = getProposalStartTime(proposal);
+  const endTime = getProposalEndTime(proposal);
   return {
     title: proposal.title || '',
     startDate: parsedRange.startDate,
     endDate: parsedRange.endDate,
-    time: proposal.specifics?.time || '',
+    time: proposal.type === 'sejour' ? '' : startTime,
+    startTime: proposal.type === 'sejour' ? startTime : '',
+    endTime: proposal.type === 'sejour' ? endTime : '',
     place: proposal.specifics?.location || '',
   };
 }

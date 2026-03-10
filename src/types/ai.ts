@@ -15,24 +15,32 @@ export type AiActionProposal = {
   impact?: string;
   payload?: {
     kind: 'create_proposal';
-    proposalDraft: {
-      title: string;
-      type: 'event' | 'sejour';
-      emoji?: string;
-      specifics?: {
-        date?: string;
-        time?: string;
-        location?: string;
-      };
-      form?: {
-        dates?: string;
-        times?: string;
-        invitees?: string;
-        place?: string;
-        requirements?: string;
-        comments?: string;
-      };
-    };
+    proposalDraft: AiProposalDraft;
+    proposalDrafts?: AiProposalDraft[];
+  };
+};
+
+export type AiProposalDraft = {
+  id: string;
+  title: string;
+  type: 'event' | 'sejour';
+  emoji?: string;
+  specifics?: {
+    date?: string;
+    time?: string;
+    startTime?: string;
+    endTime?: string;
+    location?: string;
+  };
+  form?: {
+    dates?: string;
+    times?: string;
+    startTime?: string;
+    endTime?: string;
+    invitees?: string;
+    place?: string;
+    requirements?: string;
+    comments?: string;
   };
 };
 

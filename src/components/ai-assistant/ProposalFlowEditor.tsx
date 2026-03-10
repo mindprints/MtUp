@@ -2,8 +2,11 @@ import React from 'react';
 import type { Proposal } from '@/types';
 import {
     ProposalFlowEditDraft,
+    QuarterHourTimeSelect,
+    SejourDateTimeRow,
     buildProposalFlowEditDraft,
     parseDateRangeFromText,
+    parseSejourTimeText,
 } from '@/components/ai-assistant/shared';
 import { ProposalCommentsSection } from './ProposalCommentsSection';
 import { proposalThreadStore } from '@/lib/proposalThreadStore';
@@ -12,6 +15,8 @@ type EditorAlternativeDraft = {
     startDate: string;
     endDate: string;
     time: string;
+    startTime: string;
+    endTime: string;
     place: string;
 };
 
@@ -74,31 +79,39 @@ export function ProposalFlowEditor({
                 className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100"
             />
 
-            <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? '' : 'md:grid-cols-2'}`}>
                 {proposal.type === 'sejour' ? (
-                    <>
-                        <input
-                            type="date"
-                            value={draft.startDate}
-                            onChange={(e) =>
-                                updateProposalFlowEditField(proposal.id, 'startDate', e.target.value)
-                            }
-                            disabled={!canEditSelectedProposal}
-                            aria-label="Proposal start date"
-                            className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                        />
-                        <input
-                            type="date"
-                            value={draft.endDate}
-                            min={draft.startDate || undefined}
-                            onChange={(e) =>
-                                updateProposalFlowEditField(proposal.id, 'endDate', e.target.value)
-                            }
-                            disabled={!canEditSelectedProposal}
-                            aria-label="Proposal end date"
-                            className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                        />
-                    </>
+                    <SejourDateTimeRow
+                        startDate={draft.startDate}
+                        endDate={draft.endDate}
+                        startTime={draft.startTime}
+                        endTime={draft.endTime}
+                        onStartDateChange={(value) =>
+                            updateProposalFlowEditField(proposal.id, 'startDate', value)
+                        }
+                        onEndDateChange={(value) =>
+                            updateProposalFlowEditField(proposal.id, 'endDate', value)
+                        }
+                        onStartTimeChange={(value) =>
+                            updateProposalFlowEditField(proposal.id, 'startTime', value)
+                        }
+                        onEndTimeChange={(value) =>
+                            updateProposalFlowEditField(proposal.id, 'endTime', value)
+                        }
+                        startDateLabel="Start Date"
+                        startTimeLabel="Start Time"
+                        endDateLabel="End Date"
+                        endTimeLabel="End Time"
+                        startDateAriaLabel="Proposal start date"
+                        startTimeAriaLabel="Proposal start time"
+                        endDateAriaLabel="Proposal end date"
+                        endTimeAriaLabel="Proposal end time"
+                        disabled={!canEditSelectedProposal}
+                        dateInputClassName="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                        timeSelectClassName="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                        labelClassName="text-[10px] font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-200"
+                        separatorClassName="text-[11px] font-semibold text-indigo-400 dark:text-indigo-600"
+                    />
                 ) : (
                     <input
                         type="date"
@@ -112,17 +125,17 @@ export function ProposalFlowEditor({
                         className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
                     />
                 )}
-                <input
-                    type="time"
-                    value={draft.time}
-                    step={900}
-                    onChange={(e) =>
-                        updateProposalFlowEditField(proposal.id, 'time', e.target.value)
-                    }
-                    disabled={!canEditSelectedProposal}
-                    aria-label="Proposal time"
-                    className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
-                />
+                {proposal.type !== 'sejour' && (
+                    <QuarterHourTimeSelect
+                        value={draft.time}
+                        onChange={(value) =>
+                            updateProposalFlowEditField(proposal.id, 'time', value)
+                        }
+                        disabled={!canEditSelectedProposal}
+                        ariaLabel="Proposal time"
+                        className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs text-gray-900 disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                    />
+                )}
             </div>
 
             <input
@@ -145,64 +158,81 @@ export function ProposalFlowEditor({
                         startDate: '',
                         endDate: '',
                         time: '',
+                        startTime: '',
+                        endTime: '',
                         place: '',
                     };
                     return (
                         <>
-                            <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                                <input
-                                    type="date"
-                                    value={altDraft.startDate}
-                                    onChange={(e) => {
-                                        updateEditorAlternativeDraftField(
-                                            proposal.id,
-                                            'startDate',
-                                            e.target.value
-                                        );
-                                        if (proposal.type !== 'sejour') {
-                                            updateEditorAlternativeDraftField(
-                                                proposal.id,
-                                                'endDate',
-                                                e.target.value
-                                            );
+                            <div className={`grid grid-cols-1 gap-1.5 ${proposal.type === 'sejour' ? '' : 'md:grid-cols-3'}`}>
+                                {proposal.type === 'sejour' ? (
+                                    <SejourDateTimeRow
+                                        startDate={altDraft.startDate}
+                                        endDate={altDraft.endDate}
+                                        startTime={altDraft.startTime}
+                                        endTime={altDraft.endTime}
+                                        onStartDateChange={(value) =>
+                                            updateEditorAlternativeDraftField(proposal.id, 'startDate', value)
                                         }
-                                    }}
-                                    disabled={!canEditSelectedProposal}
-                                    aria-label="Alternative date"
-                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                />
-                                {proposal.type === 'sejour' && (
-                                    <input
-                                        type="date"
-                                        value={altDraft.endDate}
-                                        min={altDraft.startDate || undefined}
-                                        onChange={(e) =>
-                                            updateEditorAlternativeDraftField(
-                                                proposal.id,
-                                                'endDate',
-                                                e.target.value
-                                            )
+                                        onEndDateChange={(value) =>
+                                            updateEditorAlternativeDraftField(proposal.id, 'endDate', value)
                                         }
+                                        onStartTimeChange={(value) =>
+                                            updateEditorAlternativeDraftField(proposal.id, 'startTime', value)
+                                        }
+                                        onEndTimeChange={(value) =>
+                                            updateEditorAlternativeDraftField(proposal.id, 'endTime', value)
+                                        }
+                                        startDateLabel="Start Date"
+                                        startTimeLabel="Start Time"
+                                        endDateLabel="End Date"
+                                        endTimeLabel="End Time"
+                                        startDateAriaLabel="Alternative start date"
+                                        startTimeAriaLabel="Alternative start time"
+                                        endDateAriaLabel="Alternative end date"
+                                        endTimeAriaLabel="Alternative end time"
                                         disabled={!canEditSelectedProposal}
-                                        aria-label="Alternative end date"
-                                        className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        dateInputClassName="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        timeSelectClassName="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        labelClassName="text-[10px] font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-200"
+                                        separatorClassName="text-[11px] font-semibold text-indigo-400 dark:text-indigo-600"
                                     />
+                                ) : (
+                                    <>
+                                        <input
+                                            type="date"
+                                            value={altDraft.startDate}
+                                            onChange={(e) => {
+                                                updateEditorAlternativeDraftField(
+                                                    proposal.id,
+                                                    'startDate',
+                                                    e.target.value
+                                                );
+                                                updateEditorAlternativeDraftField(
+                                                    proposal.id,
+                                                    'endDate',
+                                                    e.target.value
+                                                );
+                                            }}
+                                            disabled={!canEditSelectedProposal}
+                                            aria-label="Alternative date"
+                                            className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        />
+                                        <QuarterHourTimeSelect
+                                            value={altDraft.time}
+                                            onChange={(value) =>
+                                                updateEditorAlternativeDraftField(
+                                                    proposal.id,
+                                                    'time',
+                                                    value
+                                                )
+                                            }
+                                            disabled={!canEditSelectedProposal}
+                                            ariaLabel="Alternative time"
+                                            className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
+                                        />
+                                    </>
                                 )}
-                                <input
-                                    type="time"
-                                    value={altDraft.time}
-                                    step={900}
-                                    onChange={(e) =>
-                                        updateEditorAlternativeDraftField(
-                                            proposal.id,
-                                            'time',
-                                            e.target.value
-                                        )
-                                    }
-                                    disabled={!canEditSelectedProposal}
-                                    aria-label="Alternative time"
-                                    className="rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs disabled:opacity-60 dark:border-indigo-900/70 dark:bg-slate-900 dark:[color-scheme:dark]"
-                                />
                                 <input
                                     type="text"
                                     value={altDraft.place}
@@ -283,7 +313,15 @@ export function ProposalFlowEditor({
                                     </span>
                                     <button
                                         type="button"
-                                        onClick={() => updateProposalFlowEditField(proposal.id, 'time', text)}
+                                        onClick={() => {
+                                            if (proposal.type === 'sejour') {
+                                                const parsedTimes = parseSejourTimeText(text);
+                                                updateProposalFlowEditField(proposal.id, 'startTime', parsedTimes.startTime);
+                                                updateProposalFlowEditField(proposal.id, 'endTime', parsedTimes.endTime);
+                                                return;
+                                            }
+                                            updateProposalFlowEditField(proposal.id, 'time', text);
+                                        }}
                                         disabled={!canEditSelectedProposal}
                                         className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] disabled:opacity-50 dark:border-amber-800 dark:bg-slate-900"
                                     >

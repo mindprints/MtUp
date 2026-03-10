@@ -13,6 +13,7 @@ import {
 } from 'date-fns';
 import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
+import { getProposalStartTime, getProposalTimeSummary } from '@/components/ai-assistant/shared';
 import { storage } from '@/lib/storage';
 import { CalendarCell } from './CalendarCell';
 import { ActivityDetailsModal } from './ActivityDetailsModal';
@@ -362,12 +363,12 @@ export function IndividualCalendar({
   );
 
   const confirmedAllDay = confirmedOnDate.filter(
-    (proposal) => getHourFromTimeLabel(proposal.specifics?.time) === null
+    (proposal) => getHourFromTimeLabel(getProposalStartTime(proposal)) === null
   );
 
   const confirmedByHour = new Map<number, Proposal[]>();
   confirmedOnDate.forEach((proposal) => {
-    const hour = getHourFromTimeLabel(proposal.specifics?.time);
+    const hour = getHourFromTimeLabel(getProposalStartTime(proposal));
     if (hour === null) return;
     if (!confirmedByHour.has(hour)) {
       confirmedByHour.set(hour, []);
@@ -491,12 +492,12 @@ export function IndividualCalendar({
                         Available: <span className="font-medium">{availableCount}/{totalUsers}</span>
                         {availableNames.length > 0 && <span> ({availableNames.join(', ')})</span>}
                       </div>
-                      {(proposal.specifics?.date || proposal.specifics?.time) && (
+                      {(proposal.specifics?.date || getProposalTimeSummary(proposal)) && (
                         <div>
                           When:{' '}
                           <span className="font-medium">
                             {proposal.specifics?.date || 'Date TBD'}
-                            {proposal.specifics?.time ? ` • ${proposal.specifics.time}` : ''}
+                            {getProposalTimeSummary(proposal) ? ` • ${getProposalTimeSummary(proposal)}` : ''}
                           </span>
                         </div>
                       )}
@@ -689,7 +690,7 @@ export function IndividualCalendar({
                           >
                             <span>{proposal.emoji}</span>
                             <span>{proposal.title}</span>
-                            {proposal.specifics?.time && <span>({proposal.specifics.time})</span>}
+                            {getProposalTimeSummary(proposal) && <span>({getProposalTimeSummary(proposal)})</span>}
                           </span>
                         ))}
                       </div>

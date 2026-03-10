@@ -1,10 +1,18 @@
 import { useState } from 'react';
 import type { AiActionProposal } from '@/types';
+import {
+  SejourDateTimeRow,
+  formatDateRangeText,
+  normalizeTimeInputValue,
+  parseDateRangeFromText,
+} from '@/components/ai-assistant/shared';
 
 export type AiProposalFormValues = {
   title: string;
   dates: string;
   times: string;
+  startTime: string;
+  endTime: string;
   invitees: string;
   place: string;
   requirements: string;
@@ -27,10 +35,14 @@ export function AiProposalFormCard({
   isCompleted = false,
 }: AiProposalFormCardProps) {
   const draft = proposal.payload?.proposalDraft;
+  const isSejour = draft?.type === 'sejour';
+  const parsedDates = parseDateRangeFromText(draft?.form?.dates || draft?.specifics?.date || '');
   const [values, setValues] = useState<AiProposalFormValues>({
     title: draft?.title || '',
     dates: draft?.form?.dates || draft?.specifics?.date || '',
     times: draft?.form?.times || draft?.specifics?.time || '',
+    startTime: normalizeTimeInputValue(draft?.form?.startTime || draft?.specifics?.startTime || ''),
+    endTime: normalizeTimeInputValue(draft?.form?.endTime || draft?.specifics?.endTime || ''),
     invitees: draft?.form?.invitees || 'Everyone in active group',
     place: draft?.form?.place || draft?.specifics?.location || '',
     requirements: draft?.form?.requirements || '',
@@ -56,28 +68,67 @@ export function AiProposalFormCard({
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           />
         </label>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="text-xs text-gray-700 dark:text-slate-200">
-            Date / Dates
-            <input
-              type="text"
-              value={values.dates}
-              onChange={(e) => update('dates', e.target.value)}
-              placeholder="YYYY-MM-DD or YYYY-MM-DD to YYYY-MM-DD"
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            />
-          </label>
-          <label className="text-xs text-gray-700 dark:text-slate-200">
-            Time(s)
-            <input
-              type="text"
-              value={values.times}
-              onChange={(e) => update('times', e.target.value)}
-              placeholder="Evening, 7pm, 6-9pm"
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            />
-          </label>
-        </div>
+        {isSejour ? (
+          <SejourDateTimeRow
+            startDate={parseDateRangeFromText(values.dates).startDate || parsedDates.startDate}
+            endDate={parseDateRangeFromText(values.dates).endDate || parsedDates.endDate}
+            startTime={values.startTime}
+            endTime={values.endTime}
+            onStartDateChange={(value) =>
+              update(
+                'dates',
+                formatDateRangeText(
+                  value,
+                  parseDateRangeFromText(values.dates).endDate || parsedDates.endDate
+                )
+              )
+            }
+            onEndDateChange={(value) =>
+              update(
+                'dates',
+                formatDateRangeText(
+                  parseDateRangeFromText(values.dates).startDate || parsedDates.startDate,
+                  value
+                )
+              )
+            }
+            onStartTimeChange={(value) => update('startTime', value)}
+            onEndTimeChange={(value) => update('endTime', value)}
+            startDateLabel="Start Date"
+            startTimeLabel="Start Time"
+            endDateLabel="End Date"
+            endTimeLabel="End Time"
+            startDateAriaLabel="Sejour start date"
+            startTimeAriaLabel="Sejour start time"
+            endDateAriaLabel="Sejour end date"
+            endTimeAriaLabel="Sejour end time"
+            dateInputClassName="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+            timeSelectClassName="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="text-xs text-gray-700 dark:text-slate-200">
+              Date / Dates
+              <input
+                type="text"
+                value={values.dates}
+                onChange={(e) => update('dates', e.target.value)}
+                placeholder="YYYY-MM-DD or YYYY-MM-DD to YYYY-MM-DD"
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+            <label className="text-xs text-gray-700 dark:text-slate-200">
+              Time(s)
+              <input
+                type="text"
+                value={values.times}
+                onChange={(e) => update('times', e.target.value)}
+                placeholder="Evening, 7pm, 6-9pm"
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+          </div>
+        )}
         <label className="text-xs text-gray-700 dark:text-slate-200">
           Invitees
           <input
@@ -106,7 +157,7 @@ export function AiProposalFormCard({
           />
         </label>
         <label className="text-xs text-gray-700 dark:text-slate-200">
-          Comments
+          Notes
           <textarea
             value={values.comments}
             onChange={(e) => update('comments', e.target.value)}

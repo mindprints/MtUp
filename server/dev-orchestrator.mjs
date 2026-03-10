@@ -78,6 +78,38 @@ function shouldListAttendees(message) {
   );
 }
 
+function shouldListReadyToConfirm(message) {
+  return /\b(ready to confirm|strong agreement|strong consensus|closest to settled|looks settled)\b/.test(
+    message
+  );
+}
+
+function shouldSummarizeActivity(message) {
+  return /\b(what'?s the situation with|how is .* looking|summari[sz]e|what'?s happening with)\b/.test(
+    message
+  );
+}
+
+function shouldListMissingReplies(message) {
+  return /\b(who.*(hasn'?t|have not|still).*repl|waiting on|missing repl|who are we waiting for)\b/.test(
+    message
+  );
+}
+
+function shouldOfferReminder(message) {
+  return /\b(remind|send .* reminder)\b/.test(message);
+}
+
+function shouldOfferConfirmationEmail(message) {
+  return /\b(confirm|confirmation mails|confirmation emails|send out confirmation mails|send confirmation emails)\b/.test(
+    message
+  );
+}
+
+function isAffirmative(message) {
+  return /^(yes|yes please|please do|do that|go ahead|sure|ok|okay)\b/.test(message);
+}
+
 function shouldProposeActivity(message) {
   const hasPlanningVerb = /\b(propose|plan|suggest|organize)\b/.test(message);
   const hasActivityNoun =
@@ -122,6 +154,20 @@ async function classifyIntent(message, options = {}) {
   const proposalMode = Boolean(options.proposalMode);
   const previousIntent = options.previousIntent || null;
 
+  // Coordination/status questions should still work from the Snooky screen.
+  if (shouldListConfirmed(message)) return 'list_confirmed';
+  if (shouldListMyAvailability(message)) return 'list_my_availability';
+  if (shouldListAttendees(message)) return 'list_attendees';
+  if (previousIntent === 'offer_reminder' && isAffirmative(message)) return 'execute_reminder';
+  if (previousIntent === 'offer_confirmation_email' && isAffirmative(message)) {
+    return 'execute_confirmation_email';
+  }
+  if (shouldListReadyToConfirm(message)) return 'list_ready_to_confirm';
+  if (shouldListMissingReplies(message)) return 'list_missing_replies';
+  if (shouldOfferReminder(message)) return 'offer_reminder';
+  if (shouldOfferConfirmationEmail(message)) return 'offer_confirmation_email';
+  if (shouldSummarizeActivity(message)) return 'summarize_activity_status';
+
   if (proposalMode) {
     if (shouldProposeActivity(message)) return 'propose_activity';
     if (previousIntent === 'propose_activity' && looksLikeProposalRefinement(message)) {
@@ -131,9 +177,6 @@ async function classifyIntent(message, options = {}) {
   }
 
   // Deterministic intent shortcuts for high-confidence phrasing.
-  if (shouldListConfirmed(message)) return 'list_confirmed';
-  if (shouldListMyAvailability(message)) return 'list_my_availability';
-  if (shouldListAttendees(message)) return 'list_attendees';
   if (shouldProposeActivity(message)) return 'propose_activity';
 
   if (!openRouterApiKey) {
@@ -146,7 +189,7 @@ async function classifyIntent(message, options = {}) {
         role: 'system',
         content: proposalMode
           ? 'Classify the user request into exactly one label: propose_activity, unsupported. Respond with only the label.'
-          : 'Classify the user request into exactly one label: list_confirmed, list_my_availability, list_attendees, propose_activity, unsupported. Respond with only the label.',
+          : 'Classify the user request into exactly one label: list_confirmed, list_my_availability, list_attendees, list_ready_to_confirm, list_missing_replies, summarize_activity_status, offer_reminder, execute_reminder, offer_confirmation_email, execute_confirmation_email, propose_activity, unsupported. Respond with only the label.',
       },
       {
         role: 'user',
@@ -160,6 +203,13 @@ async function classifyIntent(message, options = {}) {
         : result === 'list_confirmed' ||
           result === 'list_my_availability' ||
           result === 'list_attendees' ||
+          result === 'list_ready_to_confirm' ||
+          result === 'list_missing_replies' ||
+          result === 'summarize_activity_status' ||
+          result === 'offer_reminder' ||
+          result === 'execute_reminder' ||
+          result === 'offer_confirmation_email' ||
+          result === 'execute_confirmation_email' ||
           result === 'propose_activity' ||
           result === 'unsupported')
     ) {
@@ -172,6 +222,15 @@ async function classifyIntent(message, options = {}) {
   if (shouldListConfirmed(message)) return 'list_confirmed';
   if (shouldListMyAvailability(message)) return 'list_my_availability';
   if (shouldListAttendees(message)) return 'list_attendees';
+  if (previousIntent === 'offer_reminder' && isAffirmative(message)) return 'execute_reminder';
+  if (previousIntent === 'offer_confirmation_email' && isAffirmative(message)) {
+    return 'execute_confirmation_email';
+  }
+  if (shouldListReadyToConfirm(message)) return 'list_ready_to_confirm';
+  if (shouldListMissingReplies(message)) return 'list_missing_replies';
+  if (shouldOfferReminder(message)) return 'offer_reminder';
+  if (shouldOfferConfirmationEmail(message)) return 'offer_confirmation_email';
+  if (shouldSummarizeActivity(message)) return 'summarize_activity_status';
   if (shouldProposeActivity(message)) return 'propose_activity';
   if (proposalMode && looksLikeProposalRefinement(message)) return 'propose_activity';
   return 'unsupported';
@@ -357,6 +416,217 @@ async function fetchAttendeesForProposal({ authToken, proposalId, activeGroupId 
   const profiles = await profileResponse.json();
   const byId = new Map(profiles.map((profile) => [profile.id, profile.display_name || profile.id]));
   return userIds.map((userId) => ({ id: userId, name: byId.get(userId) || userId }));
+}
+
+async function fetchActiveGroupMembers({ authToken, activeGroupId }) {
+  if (!activeGroupId) return [];
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/list_group_members`, {
+    method: 'POST',
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ target_group_id: activeGroupId }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to fetch group members (${response.status}): ${body}`);
+  }
+  const rows = await response.json();
+  return rows
+    .map((row) => ({
+      id: row.user_id,
+      name: row.display_name || row.user_id,
+    }))
+    .filter((member) => member.id);
+}
+
+async function fetchOpenProposals({ authToken, activeGroupId }) {
+  const query = new URLSearchParams({
+    select: 'id,title,type,status,specifics_json,created_at',
+    order: 'created_at.asc',
+  });
+  if (activeGroupId) {
+    query.append('group_id', `eq.${activeGroupId}`);
+  }
+  const response = await fetch(`${supabaseUrl}/rest/v1/proposals?${query.toString()}`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to fetch proposals (${response.status}): ${body}`);
+  }
+  const rows = await response.json();
+  return rows.filter((row) => row.status !== 'confirmed');
+}
+
+async function fetchAvailabilitiesForProposalIds({ authToken, proposalIds, activeGroupId }) {
+  if (proposalIds.length === 0) return [];
+  const query = new URLSearchParams({
+    select: 'proposal_id,user_id,dates_json',
+    proposal_id: `in.(${proposalIds.join(',')})`,
+  });
+  if (activeGroupId) {
+    query.append('group_id', `eq.${activeGroupId}`);
+  }
+  const response = await fetch(`${supabaseUrl}/rest/v1/availabilities?${query.toString()}`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to fetch proposal availabilities (${response.status}): ${body}`);
+  }
+  return response.json();
+}
+
+function formatPlanSummary(proposal) {
+  const specifics = proposal.specifics_json || {};
+  const date = specifics.date || 'date not set';
+  if (proposal.type === 'sejour') {
+    const startTime = specifics.startTime || '';
+    const endTime = specifics.endTime || '';
+    const timeText = [startTime, endTime].filter(Boolean).join(' to ');
+    return timeText ? `${date}, ${timeText}` : date;
+  }
+  const time = specifics.time || '';
+  return time ? `${date} at ${time}` : date;
+}
+
+function buildCoordinationSnapshot({ proposals, availabilities, members }) {
+  const memberNames = members.map((member) => member.name);
+  const byProposalId = new Map();
+  proposals.forEach((proposal) => {
+    const proposalAvailabilities = availabilities.filter((row) => row.proposal_id === proposal.id);
+    const attendingUserIds = Array.from(
+      new Set(
+        proposalAvailabilities
+          .filter((row) => Array.isArray(row.dates_json) && row.dates_json.length > 0)
+          .map((row) => row.user_id)
+          .filter(Boolean)
+      )
+    );
+    const attendees = members
+      .filter((member) => attendingUserIds.includes(member.id))
+      .map((member) => member.name);
+    const missing = memberNames.filter((name) => !attendees.includes(name));
+    const totalMembers = Math.max(members.length, 1);
+    const readyThreshold = Math.max(2, Math.ceil(totalMembers * 0.6));
+    const state =
+      proposal.status === 'confirmed'
+        ? 'confirmed'
+        : attendees.length >= readyThreshold && missing.length <= 1
+        ? 'ready_to_confirm'
+        : attendees.length >= Math.max(2, Math.ceil(totalMembers * 0.4))
+        ? 'taking_shape'
+        : 'waiting_for_replies';
+    byProposalId.set(proposal.id, {
+      proposal,
+      attendees,
+      missing,
+      state,
+      planSummary: formatPlanSummary(proposal),
+    });
+  });
+  return byProposalId;
+}
+
+function tokenizeComparableText(input) {
+  return normalizeMessage(input)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3);
+}
+
+function scoreTitleMatch(message, title) {
+  const normalizedMessage = normalizeMessage(message);
+  const normalizedTitle = normalizeMessage(title);
+  if (!normalizedMessage || !normalizedTitle) return 0;
+  if (normalizedMessage === normalizedTitle) return 100;
+  if (normalizedMessage.includes(normalizedTitle)) return 80 + normalizedTitle.length;
+  const messageTokens = tokenizeComparableText(message);
+  const titleTokens = tokenizeComparableText(title);
+  if (messageTokens.length === 0 || titleTokens.length === 0) return 0;
+  let score = 0;
+  for (const token of titleTokens) {
+    if (messageTokens.includes(token)) {
+      score += 2;
+      continue;
+    }
+    if (messageTokens.some((messageToken) => messageToken.includes(token) || token.includes(messageToken))) {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function findProposalSnapshotFromMessage(message, snapshots, state) {
+  const normalized = normalizeMessage(message);
+  const all = Array.from(snapshots.values());
+  const byTitle = all
+    .filter((entry) => normalized.includes(String(entry.proposal.title || '').toLowerCase()))
+    .sort((a, b) => String(b.proposal.title || '').length - String(a.proposal.title || '').length)[0];
+  if (byTitle) return byTitle;
+  const fuzzyMatches = all
+    .map((entry) => ({ entry, score: scoreTitleMatch(message, entry.proposal.title || '') }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (fuzzyMatches[0]?.score > 0) {
+    return fuzzyMatches[0].entry;
+  }
+  if (state.lastReferencedProposalId && snapshots.has(state.lastReferencedProposalId)) {
+    return snapshots.get(state.lastReferencedProposalId);
+  }
+  if (all.length === 1) return all[0];
+  return null;
+}
+
+function formatProposalDisambiguation(snapshots) {
+  const titles = Array.from(snapshots.values())
+    .map((entry) => entry.proposal.title)
+    .filter(Boolean)
+    .slice(0, 5);
+  if (titles.length === 0) {
+    return 'I could not find any activities in the current group.';
+  }
+  return `I could not tell which activity you meant. Try one of these titles: ${titles.join(', ')}.`;
+}
+
+function formatReadyToConfirmAnswer(snapshots) {
+  const ready = Array.from(snapshots.values()).filter((entry) => entry.state === 'ready_to_confirm');
+  if (ready.length === 0) {
+    return 'Nothing looks ready to confirm right now.';
+  }
+  const top = ready[0];
+  const attendeeText = top.attendees.length > 0 ? top.attendees.join(', ') : 'no one yet';
+  const missingText = top.missing.length > 0 ? ` Still waiting on ${top.missing.join(' and ')}.` : '';
+  return `${top.proposal.title} is ready to confirm. ${attendeeText} are onboard for ${top.planSummary}.${missingText}`;
+}
+
+function formatActivityStatusAnswer(snapshot) {
+  const stateText =
+    snapshot.state === 'ready_to_confirm'
+      ? 'looks ready to confirm'
+      : snapshot.state === 'taking_shape'
+      ? 'is taking shape'
+      : 'is still waiting on replies';
+  const attendeesText =
+    snapshot.attendees.length > 0 ? `${snapshot.attendees.join(', ')} are in.` : 'No one is fully in yet.';
+  const missingText =
+    snapshot.missing.length > 0 ? ` Still waiting on ${snapshot.missing.join(' and ')}.` : '';
+  return `${snapshot.proposal.title} ${stateText}. The current best plan is ${snapshot.planSummary}. ${attendeesText}${missingText}`;
+}
+
+function formatMissingRepliesAnswer(snapshot) {
+  if (snapshot.missing.length === 0) {
+    return `No one is outstanding for ${snapshot.proposal.title}.`;
+  }
+  return `Still waiting on ${snapshot.missing.join(' and ')} for ${snapshot.proposal.title}.`;
 }
 
 function formatConfirmedAnswer(rows) {
@@ -824,6 +1094,134 @@ function inferProposalTitleFromMessage(message) {
   return 'New Activity Proposal';
 }
 
+function detectIdeaCount(message) {
+  const explicitMatch = message.match(
+    /\b(\d+|one|two|three|four|five|a few|few|several)\s+(?:activity\s+)?ideas?\b/
+  );
+  const token = explicitMatch?.[1];
+  if (!token) return 1;
+  if (/^\d+$/.test(token)) {
+    return Math.max(1, Math.min(5, Number(token)));
+  }
+  if (token === 'one') return 1;
+  if (token === 'two') return 2;
+  if (token === 'three') return 3;
+  if (token === 'four') return 4;
+  if (token === 'five') return 5;
+  if (token === 'a few' || token === 'few') return 3;
+  if (token === 'several') return 4;
+  return 1;
+}
+
+function buildActivityProposalDraft({
+  title,
+  proposalType,
+  emoji,
+  dates,
+  times,
+  place,
+  requirements,
+  comments,
+  invitees,
+}) {
+  return {
+    id: randomUUID(),
+    title,
+    type: proposalType,
+    emoji,
+    specifics: {
+      ...(dates ? { date: dates } : {}),
+      ...(times ? { time: times } : {}),
+      ...(place ? { location: place } : {}),
+    },
+    form: {
+      dates,
+      times,
+      invitees,
+      place,
+      requirements,
+      comments,
+    },
+  };
+}
+
+function buildBatchIdeaDates(temporalRequest, count) {
+  if (temporalRequest.kind === 'dates') {
+    return temporalRequest.dates.slice(0, count).map((entry) => entry.isoDate);
+  }
+  if (temporalRequest.kind === 'window') {
+    const offsets = [1, 3, 5, 6, 0];
+    return offsets.slice(0, count).map((offset) => {
+      const date = new Date(`${temporalRequest.window.startIso}T12:00:00`);
+      date.setDate(date.getDate() + offset);
+      return formatIsoDate(date);
+    });
+  }
+  return [];
+}
+
+function buildMultipleActivityProposalDrafts({
+  message,
+  temporalRequest,
+  extractedFields,
+  inviteesFieldValue,
+  placeFieldValue,
+  requirementsFieldValue,
+  commentsFieldValue,
+  count,
+}) {
+  const suggestionTemplates = [
+    {
+      title: 'Afterwork at a Wine Bar',
+      emoji: '🍷',
+      time: '18:00',
+      place: placeFieldValue || 'Sodermalm',
+      requirements: requirementsFieldValue || 'Casual afterwork mood',
+      comments: commentsFieldValue || 'Good for a relaxed group catch-up after work.',
+    },
+    {
+      title: 'Group Dinner',
+      emoji: '🍽️',
+      time: '19:00',
+      place: placeFieldValue || 'Vasastan',
+      requirements: requirementsFieldValue || 'Table booking for the group',
+      comments: commentsFieldValue || 'Simple sit-down dinner with time to talk.',
+    },
+    {
+      title: 'Saturday Hike and Coffee',
+      emoji: '🥾',
+      time: '15:00',
+      place: placeFieldValue || 'Djurgarden',
+      requirements: requirementsFieldValue || 'Comfortable walking shoes',
+      comments: commentsFieldValue || 'Low-pressure daytime option with room for drop-ins.',
+    },
+    {
+      title: 'Board Game Evening',
+      emoji: '🎲',
+      time: '18:30',
+      place: placeFieldValue || 'Kungsholmen',
+      requirements: requirementsFieldValue || 'Bring one game if you have one',
+      comments: commentsFieldValue || 'Works well when the group wants something social but easy.',
+    },
+  ];
+  const proposalType = extractedFields.proposalType === 'sejour' ? 'sejour' : 'event';
+  const batchDates = buildBatchIdeaDates(temporalRequest, count);
+
+  return suggestionTemplates.slice(0, count).map((template, index) =>
+    buildActivityProposalDraft({
+      title: template.title,
+      proposalType,
+      emoji: template.emoji,
+      dates: extractedFields.dates || batchDates[index] || '',
+      times: extractedFields.times || template.time,
+      place: template.place,
+      requirements: template.requirements,
+      comments: template.comments,
+      invitees: inviteesFieldValue,
+    })
+  );
+}
+
 async function buildActivityProposalPreview(rawMessage) {
   const message = normalizeMessage(rawMessage);
   const temporalRequest = await resolveTemporalRequest(rawMessage);
@@ -860,31 +1258,77 @@ async function buildActivityProposalPreview(rawMessage) {
   const requirementsFieldValue = extractedFields.requirements || '';
   const commentsFieldValue = extractedFields.comments || '';
   const resolvedDatesFieldValue = extractedFields.dates || datesFieldValue;
+  const requestedIdeaCount = detectIdeaCount(message);
+  const shouldCreateMultipleIdeas = requestedIdeaCount > 1;
+  const proposalDrafts = shouldCreateMultipleIdeas
+    ? buildMultipleActivityProposalDrafts({
+        message,
+        temporalRequest,
+        extractedFields,
+        inviteesFieldValue,
+        placeFieldValue,
+        requirementsFieldValue,
+        commentsFieldValue,
+        count: requestedIdeaCount,
+      })
+    : [
+        buildActivityProposalDraft({
+          title: inferredTitle,
+          proposalType,
+          emoji: '🎉',
+          dates: resolvedDatesFieldValue,
+          times: timeFieldValue,
+          place: placeFieldValue,
+          requirements: requirementsFieldValue,
+          comments: commentsFieldValue,
+          invitees: inviteesFieldValue,
+        }),
+      ];
 
-  const assistantLines = [
-    `I drafted a ${activityLabel} proposal form for you.`,
-    'Edit any fields, then click Propose.',
-  ];
+  const assistantLines = shouldCreateMultipleIdeas
+    ? [
+        `I drafted ${proposalDrafts.length} ${activityLabel} ideas for you.`,
+        'Edit any fields, then propose the ones you want to keep.',
+      ]
+    : [`I drafted a ${activityLabel} proposal form for you.`, 'Edit any fields, then click Propose.'];
 
-  const summary = [
-    `Propose ${activityLabel}`,
-    temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
-    temporalRequest.kind === 'dates'
-      ? `(${temporalRequest.dates.map((d) => d.label.replace(/\s*\(\d{4}-\d{2}-\d{2}\)/, '')).join(' / ')})`
-      : '',
-    inviteEveryone || groupAudienceRequested ? 'and invite everyone in group' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const summary = shouldCreateMultipleIdeas
+    ? [
+        `Propose ${proposalDrafts.length} ${activityLabel} ideas`,
+        temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
+        inviteEveryone || groupAudienceRequested ? 'for everyone in group' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
+    : [
+        `Propose ${activityLabel}`,
+        temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
+        temporalRequest.kind === 'dates'
+          ? `(${temporalRequest.dates.map((d) => d.label.replace(/\s*\(\d{4}-\d{2}-\d{2}\)/, '')).join(' / ')})`
+          : '',
+        inviteEveryone || groupAudienceRequested ? 'and invite everyone in group' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-  const impact = [
-    candidateDates.length > 0
-      ? `Candidate dates: ${candidateDates.join(', ')}`
-      : candidateWindowLabel
-      ? `Candidate window: ${candidateWindowLabel}`
-      : 'Candidate date to be chosen',
-    `Invitees: ${inviteesFieldValue}`,
-  ].join('. ') + '.';
+  const impact = shouldCreateMultipleIdeas
+    ? [
+        candidateWindowLabel
+          ? `Planning window: ${candidateWindowLabel}`
+          : candidateDates.length > 0
+          ? `Candidate dates: ${candidateDates.join(', ')}`
+          : 'Planning window to be chosen',
+        `Draft ideas: ${proposalDrafts.map((draft) => draft.title).join(', ')}`,
+        `Invitees: ${inviteesFieldValue}`,
+      ].join('. ') + '.'
+    : [
+        candidateDates.length > 0
+          ? `Candidate dates: ${candidateDates.join(', ')}`
+          : candidateWindowLabel
+          ? `Candidate window: ${candidateWindowLabel}`
+          : 'Candidate date to be chosen',
+        `Invitees: ${inviteesFieldValue}`,
+      ].join('. ') + '.';
 
   return {
     assistantText: assistantLines.join('\n'),
@@ -896,24 +1340,8 @@ async function buildActivityProposalPreview(rawMessage) {
       impact,
       payload: {
         kind: 'create_proposal',
-        proposalDraft: {
-          title: inferredTitle,
-          type: proposalType,
-          emoji: '🎉',
-          specifics: {
-            ...(resolvedDatesFieldValue ? { date: resolvedDatesFieldValue } : {}),
-            ...(timeFieldValue ? { time: timeFieldValue } : {}),
-            ...(placeFieldValue ? { location: placeFieldValue } : {}),
-          },
-          form: {
-            dates: resolvedDatesFieldValue,
-            times: timeFieldValue,
-            invitees: inviteesFieldValue,
-            place: placeFieldValue,
-            requirements: requirementsFieldValue,
-            comments: commentsFieldValue,
-          },
-        },
+        proposalDraft: proposalDrafts[0],
+        ...(proposalDrafts.length > 1 ? { proposalDrafts } : {}),
       },
     },
   };
@@ -1070,6 +1498,7 @@ const server = http.createServer(async (req, res) => {
         let assistantText = '';
         let responseMode = 'answer';
         let actionProposal = null;
+        let coordinationSnapshots = null;
         if (intent === 'list_confirmed') {
           const confirmedRows = await fetchConfirmedProposals({ authToken, activeGroupId });
           rows = Array.isArray(confirmedRows) ? confirmedRows : [];
@@ -1134,6 +1563,75 @@ const server = http.createServer(async (req, res) => {
               proposalTitle: resolvedProposal.title || 'this activity',
               attendees,
             });
+          }
+        } else if (
+          intent === 'list_ready_to_confirm' ||
+          intent === 'list_missing_replies' ||
+          intent === 'summarize_activity_status' ||
+          intent === 'offer_reminder' ||
+          intent === 'offer_confirmation_email' ||
+          intent === 'execute_reminder' ||
+          intent === 'execute_confirmation_email'
+        ) {
+          const proposals = await fetchOpenProposals({ authToken, activeGroupId });
+          const proposalIds = proposals.map((proposal) => proposal.id);
+          const availabilities = await fetchAvailabilitiesForProposalIds({
+            authToken,
+            proposalIds,
+            activeGroupId,
+          });
+          const members = await fetchActiveGroupMembers({ authToken, activeGroupId });
+          coordinationSnapshots = buildCoordinationSnapshot({ proposals, availabilities, members });
+
+            if (intent === 'list_ready_to_confirm') {
+              assistantText = formatReadyToConfirmAnswer(coordinationSnapshots);
+            } else {
+              const snapshot = findProposalSnapshotFromMessage(rawMessage, coordinationSnapshots, threadState);
+              if (!snapshot) {
+                assistantText = formatProposalDisambiguation(coordinationSnapshots);
+              } else if (intent === 'list_missing_replies') {
+              threadState.lastReferencedProposalId = snapshot.proposal.id;
+              assistantText = formatMissingRepliesAnswer(snapshot);
+            } else if (intent === 'summarize_activity_status') {
+              threadState.lastReferencedProposalId = snapshot.proposal.id;
+              assistantText = formatActivityStatusAnswer(snapshot);
+            } else if (intent === 'offer_reminder') {
+              threadState.lastReferencedProposalId = snapshot.proposal.id;
+              if (snapshot.missing.length === 0) {
+                assistantText = `No reminder is needed for ${snapshot.proposal.title}. Everyone has replied.`;
+              } else {
+                assistantText = `I can remind ${snapshot.missing.join(' and ')} about ${snapshot.proposal.title}. Should I send it now?`;
+              }
+            } else if (intent === 'execute_reminder') {
+              if (!threadState.lastReferencedProposalId || !coordinationSnapshots.has(threadState.lastReferencedProposalId)) {
+                assistantText = 'I do not have a reminder target yet. Ask me who is still missing first.';
+              } else {
+                const target = coordinationSnapshots.get(threadState.lastReferencedProposalId);
+                if (!target || target.missing.length === 0) {
+                  assistantText = `No reminder is needed for ${target?.proposal.title || 'that activity'}.`;
+                } else {
+                  assistantText = `Reminder emails are not wired yet. The people to remind for ${target.proposal.title} are ${target.missing.join(' and ')}.`;
+                }
+              }
+            } else if (intent === 'offer_confirmation_email') {
+              threadState.lastReferencedProposalId = snapshot.proposal.id;
+              if (snapshot.state !== 'ready_to_confirm') {
+                assistantText = `${snapshot.proposal.title} is not ready to confirm yet. ${snapshot.missing.length > 0 ? `Still waiting on ${snapshot.missing.join(' and ')}.` : 'I would wait a bit longer.'}`;
+              } else {
+                assistantText = `I can confirm ${snapshot.proposal.title} for ${snapshot.planSummary} and send confirmation emails with calendar invites. Should I do that now?`;
+              }
+            } else if (intent === 'execute_confirmation_email') {
+              if (!threadState.lastReferencedProposalId || !coordinationSnapshots.has(threadState.lastReferencedProposalId)) {
+                assistantText = 'I do not have a confirmation target yet. Ask me what is ready to confirm first.';
+              } else {
+                const target = coordinationSnapshots.get(threadState.lastReferencedProposalId);
+                if (!target || target.state !== 'ready_to_confirm') {
+                  assistantText = `${target?.proposal.title || 'That activity'} is not ready to confirm yet.`;
+                } else {
+                  assistantText = `Confirmation emails with calendar invites are not wired yet. ${target.proposal.title} is the activity that looks ready to confirm.`;
+                }
+              }
+            }
           }
         } else if (intent === 'propose_activity') {
           const preview = await buildActivityProposalPreview(rawMessage);

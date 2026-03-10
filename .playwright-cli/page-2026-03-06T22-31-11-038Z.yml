@@ -1,0 +1,215 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "Snookey's Here to Help." [level=1] [ref=e10]
+        - paragraph [ref=e11]: Welcome, Alice (Admin)
+      - generic [ref=e12]:
+        - group [ref=e13]:
+          - generic "Instructions" [ref=e14] [cursor=pointer]
+        - generic [ref=e15]:
+          - generic [ref=e16]: Light
+          - checkbox "Toggle dark mode" [ref=e18]
+        - button "Sign out" [ref=e21] [cursor=pointer]
+  - main [ref=e22]:
+    - generic [ref=e24]:
+      - generic [ref=e26]: 09:41
+      - generic [ref=e32]:
+        - generic [ref=e34]:
+          - button "Admin" [ref=e35] [cursor=pointer]
+          - button "Resolver" [ref=e36] [cursor=pointer]
+          - button "Snooky" [ref=e37] [cursor=pointer]
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - button "List" [ref=e41] [cursor=pointer]
+            - button "Details" [ref=e42] [cursor=pointer]
+          - complementary [ref=e44]:
+            - generic [ref=e45]:
+              - heading "Resolver" [level=2] [ref=e46]
+              - paragraph [ref=e47]: Review proposals before they are finalized.
+            - generic [ref=e48]:
+              - generic [ref=e49]:
+                - button "All" [ref=e50] [cursor=pointer]
+                - button "Events" [ref=e51] [cursor=pointer]
+                - button "Sejours" [ref=e52] [cursor=pointer]
+                - button "Mine" [ref=e53] [cursor=pointer]
+              - generic [ref=e54]:
+                - checkbox "Show confirmed" [ref=e55]
+                - text: Show confirmed
+            - generic [ref=e57]:
+              - button "🎉 Coffee break event proposed Mine 0 comments 0 alternatives" [ref=e58] [cursor=pointer]:
+                - generic [ref=e59]:
+                  - generic [ref=e60]: 🎉
+                  - generic [ref=e61]:
+                    - generic [ref=e62]: Coffee break
+                    - generic [ref=e63]:
+                      - generic [ref=e64]: event
+                      - generic [ref=e65]: proposed
+                - generic [ref=e66]: Mine
+                - generic [ref=e67]:
+                  - generic [ref=e68]: 0 comments
+                  - generic [ref=e69]: 0 alternatives
+              - button "🎉 Weekend in Paris sejour proposed Mine 0 comments 0 alternatives" [ref=e70] [cursor=pointer]:
+                - generic [ref=e71]:
+                  - generic [ref=e72]: 🎉
+                  - generic [ref=e73]:
+                    - generic [ref=e74]: Weekend in Paris
+                    - generic [ref=e75]:
+                      - generic [ref=e76]: sejour
+                      - generic [ref=e77]: proposed
+                - generic [ref=e78]: Mine
+                - generic [ref=e79]:
+                  - generic [ref=e80]: 0 comments
+                  - generic [ref=e81]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834535513 event proposed Mine 0 comments 0 alternatives" [ref=e82] [cursor=pointer]:
+                - generic [ref=e83]:
+                  - generic [ref=e84]: 🎲
+                  - generic [ref=e85]:
+                    - generic [ref=e86]: Resolver Variant E2E 1772834535513
+                    - generic [ref=e87]:
+                      - generic [ref=e88]: event
+                      - generic [ref=e89]: proposed
+                - generic [ref=e90]: Mine
+                - generic [ref=e91]:
+                  - generic [ref=e92]: 0 comments
+                  - generic [ref=e93]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834535513 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e94] [cursor=pointer]:
+                - generic [ref=e95]:
+                  - generic [ref=e96]: 🎲
+                  - generic [ref=e97]:
+                    - generic [ref=e98]: Resolver Variant E2E 1772834535513 (Variant A)
+                    - generic [ref=e99]:
+                      - generic [ref=e100]: event
+                      - generic [ref=e101]: proposed
+                      - generic [ref=e102]: Variant A
+                - generic [ref=e103]: Mine
+                - generic [ref=e104]:
+                  - generic [ref=e105]: 0 comments
+                  - generic [ref=e106]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834535513 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e107] [cursor=pointer]:
+                - generic [ref=e108]:
+                  - generic [ref=e109]: 🎲
+                  - generic [ref=e110]:
+                    - generic [ref=e111]: Resolver Variant E2E 1772834535513 (Variant B)
+                    - generic [ref=e112]:
+                      - generic [ref=e113]: event
+                      - generic [ref=e114]: proposed
+                      - generic [ref=e115]: Variant B
+                - generic [ref=e116]: Mine
+                - generic [ref=e117]:
+                  - generic [ref=e118]: 0 comments
+                  - generic [ref=e119]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834897319 event proposed Mine 0 comments 0 alternatives" [ref=e120] [cursor=pointer]:
+                - generic [ref=e121]:
+                  - generic [ref=e122]: 🎲
+                  - generic [ref=e123]:
+                    - generic [ref=e124]: Resolver Variant E2E 1772834897319
+                    - generic [ref=e125]:
+                      - generic [ref=e126]: event
+                      - generic [ref=e127]: proposed
+                - generic [ref=e128]: Mine
+                - generic [ref=e129]:
+                  - generic [ref=e130]: 0 comments
+                  - generic [ref=e131]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834897319 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e132] [cursor=pointer]:
+                - generic [ref=e133]:
+                  - generic [ref=e134]: 🎲
+                  - generic [ref=e135]:
+                    - generic [ref=e136]: Resolver Variant E2E 1772834897319 (Variant B)
+                    - generic [ref=e137]:
+                      - generic [ref=e138]: event
+                      - generic [ref=e139]: proposed
+                      - generic [ref=e140]: Variant B
+                - generic [ref=e141]: Mine
+                - generic [ref=e142]:
+                  - generic [ref=e143]: 0 comments
+                  - generic [ref=e144]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772834897319 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e145] [cursor=pointer]:
+                - generic [ref=e146]:
+                  - generic [ref=e147]: 🎲
+                  - generic [ref=e148]:
+                    - generic [ref=e149]: Resolver Variant E2E 1772834897319 (Variant A)
+                    - generic [ref=e150]:
+                      - generic [ref=e151]: event
+                      - generic [ref=e152]: proposed
+                      - generic [ref=e153]: Variant A
+                - generic [ref=e154]: Mine
+                - generic [ref=e155]:
+                  - generic [ref=e156]: 0 comments
+                  - generic [ref=e157]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772835494264 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e158] [cursor=pointer]:
+                - generic [ref=e159]:
+                  - generic [ref=e160]: 🎲
+                  - generic [ref=e161]:
+                    - generic [ref=e162]: Resolver Variant E2E 1772835494264 (Variant B)
+                    - generic [ref=e163]:
+                      - generic [ref=e164]: event
+                      - generic [ref=e165]: proposed
+                      - generic [ref=e166]: Variant B
+                - generic [ref=e167]: Mine
+                - generic [ref=e168]:
+                  - generic [ref=e169]: 0 comments
+                  - generic [ref=e170]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772835494264 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e171] [cursor=pointer]:
+                - generic [ref=e172]:
+                  - generic [ref=e173]: 🎲
+                  - generic [ref=e174]:
+                    - generic [ref=e175]: Resolver Variant E2E 1772835494264 (Variant A)
+                    - generic [ref=e176]:
+                      - generic [ref=e177]: event
+                      - generic [ref=e178]: proposed
+                      - generic [ref=e179]: Variant A
+                - generic [ref=e180]: Mine
+                - generic [ref=e181]:
+                  - generic [ref=e182]: 0 comments
+                  - generic [ref=e183]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772835494264 event proposed Mine 0 comments 0 alternatives" [ref=e184] [cursor=pointer]:
+                - generic [ref=e185]:
+                  - generic [ref=e186]: 🎲
+                  - generic [ref=e187]:
+                    - generic [ref=e188]: Resolver Variant E2E 1772835494264
+                    - generic [ref=e189]:
+                      - generic [ref=e190]: event
+                      - generic [ref=e191]: proposed
+                - generic [ref=e192]: Mine
+                - generic [ref=e193]:
+                  - generic [ref=e194]: 0 comments
+                  - generic [ref=e195]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772836032997 event proposed Mine 0 comments 0 alternatives" [ref=e196] [cursor=pointer]:
+                - generic [ref=e197]:
+                  - generic [ref=e198]: 🎲
+                  - generic [ref=e199]:
+                    - generic [ref=e200]: Resolver Variant E2E 1772836032997
+                    - generic [ref=e201]:
+                      - generic [ref=e202]: event
+                      - generic [ref=e203]: proposed
+                - generic [ref=e204]: Mine
+                - generic [ref=e205]:
+                  - generic [ref=e206]: 0 comments
+                  - generic [ref=e207]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772836032997 (Variant B) event proposed Variant B Mine 0 comments 0 alternatives" [ref=e208] [cursor=pointer]:
+                - generic [ref=e209]:
+                  - generic [ref=e210]: 🎲
+                  - generic [ref=e211]:
+                    - generic [ref=e212]: Resolver Variant E2E 1772836032997 (Variant B)
+                    - generic [ref=e213]:
+                      - generic [ref=e214]: event
+                      - generic [ref=e215]: proposed
+                      - generic [ref=e216]: Variant B
+                - generic [ref=e217]: Mine
+                - generic [ref=e218]:
+                  - generic [ref=e219]: 0 comments
+                  - generic [ref=e220]: 0 alternatives
+              - button "🎲 Resolver Variant E2E 1772836032997 (Variant A) event proposed Variant A Mine 0 comments 0 alternatives" [ref=e221] [cursor=pointer]:
+                - generic [ref=e222]:
+                  - generic [ref=e223]: 🎲
+                  - generic [ref=e224]:
+                    - generic [ref=e225]: Resolver Variant E2E 1772836032997 (Variant A)
+                    - generic [ref=e226]:
+                      - generic [ref=e227]: event
+                      - generic [ref=e228]: proposed
+                      - generic [ref=e229]: Variant A
+                - generic [ref=e230]: Mine
+                - generic [ref=e231]:
+                  - generic [ref=e232]: 0 comments
+                  - generic [ref=e233]: 0 alternatives

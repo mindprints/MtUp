@@ -2,6 +2,7 @@ import { generateId } from '@/lib/utils';
 import type { Proposal, ProposalContribution } from '@/types';
 
 const STORAGE_KEY = 'mtup-proposal-contributions-v1';
+let cachedRows: ProposalContribution[] | null = null;
 
 function normalize(raw: unknown): ProposalContribution[] {
   if (!Array.isArray(raw)) return [];
@@ -22,17 +23,20 @@ function normalize(raw: unknown): ProposalContribution[] {
 }
 
 function readAll(): ProposalContribution[] {
+  if (cachedRows) return [...cachedRows];
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
   try {
-    return normalize(JSON.parse(raw));
+    cachedRows = normalize(JSON.parse(raw));
+    return [...cachedRows];
   } catch {
     return [];
   }
 }
 
 function writeAll(rows: ProposalContribution[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
+  cachedRows = normalize(rows);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedRows));
 }
 
 function parseDateInputs(input: string): string[] {
@@ -56,6 +60,14 @@ function parseDateInputs(input: string): string[] {
 }
 
 export const proposalThreadStore = {
+  replaceAll(rows: ProposalContribution[]): void {
+    writeAll(rows);
+  },
+
+  clear(): void {
+    writeAll([]);
+  },
+
   listAll(): ProposalContribution[] {
     return readAll().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   },
@@ -66,11 +78,21 @@ export const proposalThreadStore = {
 
   add(contribution: ProposalContribution): void {
     const rows = readAll();
-    rows.push(contribution);
-    writeAll(rows);
+    const nextRows = rows.filter((row) => row.id !== contribution.id);
+    nextRows.push(contribution);
+    writeAll(nextRows);
   },
 
-  addImplicitProposerAffirmation(proposal: Proposal): void {
+  addMany(contributions: ProposalContribution[]): void {
+    const rows = readAll();
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    contributions.forEach((contribution) => {
+      byId.set(contribution.id, contribution);
+    });
+    writeAll(Array.from(byId.values()));
+  },
+
+  addImplicitProposerAffirmation(proposal: Proposal): ProposalContribution | null {
     const rows = readAll();
     const exists = rows.some(
       (row) =>
@@ -79,8 +101,8 @@ export const proposalThreadStore = {
         row.kind === 'affirmation' &&
         row.provenance === 'implicit_proposer'
     );
-    if (exists) return;
-    rows.push({
+    if (exists) return null;
+    const contribution = {
       id: generateId(),
       proposalId: proposal.id,
       userId: proposal.createdBy,
@@ -89,8 +111,10 @@ export const proposalThreadStore = {
       value: { status: 'available_as_proposed', assumed: true },
       createdAt: new Date().toISOString(),
       provenance: 'implicit_proposer',
-    });
+    } satisfies ProposalContribution;
+    rows.push(contribution);
     writeAll(rows);
+    return contribution;
   },
 
   addExplicitAffirmation(proposalId: string, userId: string): ProposalContribution {
@@ -122,7 +146,7 @@ export const proposalThreadStore = {
     proposalId: string,
     userId: string,
     dateText: string
-  ): { contribution: ProposalContribution; impliedDates: string[] } {
+  ): { contribution: ProposalContribution; auditContribution: ProposalContribution; impliedDates: string[] } {
     const impliedDates = parseDateInputs(dateText);
     const contribution: ProposalContribution = {
       id: generateId(),
@@ -141,7 +165,7 @@ export const proposalThreadStore = {
     this.add(contribution);
 
     // Also add an explicit availability-shaped contribution for auditability of the assumption.
-    this.add({
+    const auditContribution: ProposalContribution = {
       id: generateId(),
       proposalId,
       userId,
@@ -155,9 +179,10 @@ export const proposalThreadStore = {
       },
       createdAt: new Date().toISOString(),
       provenance: 'inferred_from_delta',
-    });
+    };
+    this.add(auditContribution);
 
-    return { contribution, impliedDates };
+    return { contribution, auditContribution, impliedDates };
   },
 
   addFieldChange(

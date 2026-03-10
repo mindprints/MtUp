@@ -40,6 +40,9 @@ export function Dashboard({ children }: DashboardProps) {
                     Filters: use Display All, My Proposals, My Choices, or Selected to control what appears on the calendar.
                   </p>
                   <p className="mt-2">
+                    Navigation: use the Left and Right Arrow keys to snap between the phone screens.
+                  </p>
+                  <p className="mt-2">
                     Sejour tip: in Time, use <strong>Generate Overlap Windows</strong> to create candidate ranges from shared availability.
                   </p>
                 </div>

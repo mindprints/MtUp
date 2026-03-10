@@ -44,7 +44,7 @@ export function ProposalCommentsSection({
 
     return (
         <div className={`space-y-1 rounded border p-2 text-[11px] ${outerBorderClasses} ${containerClassName || ''}`}>
-            <p className={`font-semibold ${titleClasses}`}>Comments</p>
+            <p className={`font-semibold ${titleClasses}`}>Notes</p>
             {(proposal.comments || []).length > 0 ? (
                 <div className="space-y-1">
                     {(proposal.comments || []).map((comment) => (
@@ -57,7 +57,7 @@ export function ProposalCommentsSection({
                     ))}
                 </div>
             ) : (
-                <p className={noCommentsClasses}>No comments yet.</p>
+                <p className={noCommentsClasses}>No notes yet.</p>
             )}
             <div className="flex items-start gap-1.5">
                 <textarea
@@ -69,7 +69,7 @@ export function ProposalCommentsSection({
                         }))
                     }
                     rows={2}
-                    placeholder="Add a comment"
+                    placeholder="Add a note"
                     className={`min-h-[3.5rem] flex-1 rounded border bg-white px-2 py-1.5 text-xs text-gray-900 dark:bg-slate-900 dark:text-slate-100 ${textareaClasses}`}
                 />
                 <button
@@ -78,7 +78,7 @@ export function ProposalCommentsSection({
                     disabled={!(commentDraftByProposalId[proposal.id] || '').trim()}
                     className={`rounded border bg-white px-2 py-1 text-[11px] disabled:opacity-50 dark:bg-slate-900 ${buttonClasses}`}
                 >
-                    Add
+                    Add Note
                 </button>
             </div>
         </div>

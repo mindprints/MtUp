@@ -23,6 +23,8 @@ export type Proposal = {
   specifics?: {
     date?: string;
     time?: string;
+    startTime?: string;
+    endTime?: string;
     location?: string;
     requirements?: string;
     resolver?: {

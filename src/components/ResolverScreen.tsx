@@ -12,6 +12,7 @@ export function ResolverScreen() {
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ResolverFilter>('all');
   const [showConfirmed, setShowConfirmed] = useState(false);
+  const [mobileView, setMobileView] = useState<'queue' | 'workspace'>('queue');
 
   const userNameById = useMemo(() => {
     const map = new Map(groupUsers.map((member) => [member.id, member.name]));
@@ -31,8 +32,16 @@ export function ResolverScreen() {
   }), [proposals, showConfirmed, filter, user]);
 
   useEffect(() => {
+    if (showConfirmed) return;
+    if (visibleProposals.length > 0) return;
+    if (!proposals.some((proposal) => proposal.status === 'confirmed')) return;
+    setShowConfirmed(true);
+  }, [proposals, showConfirmed, visibleProposals]);
+
+  useEffect(() => {
     if (visibleProposals.length === 0) {
       setSelectedProposalId(null);
+      setMobileView('queue');
       return;
     }
 
@@ -80,31 +89,68 @@ export function ResolverScreen() {
     });
   };
 
+  const handleSelectProposal = (proposalId: string) => {
+    setSelectedProposalId(proposalId);
+    setMobileView('workspace');
+  };
+
   return (
-    <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <ResolverQueue
-        proposals={visibleProposals}
-        selectedProposalId={selectedProposalId}
-        onSelectProposal={setSelectedProposalId}
-        filter={filter}
-        onFilterChange={setFilter}
-        showConfirmed={showConfirmed}
-        onShowConfirmedChange={setShowConfirmed}
-        currentUserId={user.id}
-        userNameById={userNameById}
-        commentCountByProposalId={commentCountByProposalId}
-        alternativeCountByProposalId={alternativeCountByProposalId}
-      />
-      <ResolverWorkspace
-        proposal={selectedProposal}
-        proposals={proposals}
-        currentUser={user}
-        availabilities={availabilities}
-        userNameById={userNameById}
-        alternativeCount={selectedProposal ? alternativeCountByProposalId[selectedProposal.id] || 0 : 0}
-        commentCount={selectedProposal ? commentCountByProposalId[selectedProposal.id] || 0 : 0}
-        onAddComment={handleAddComment}
-      />
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden">
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setMobileView('queue')}
+          className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+            mobileView === 'queue'
+              ? 'border-blue-600 bg-blue-600 text-white'
+              : 'border-gray-300 bg-white text-gray-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200'
+          }`}
+        >
+          List
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView('workspace')}
+          className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+            mobileView === 'workspace'
+              ? 'border-blue-600 bg-blue-600 text-white'
+              : 'border-gray-300 bg-white text-gray-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200'
+          }`}
+        >
+          Details
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {mobileView === 'queue' ? (
+          <ResolverQueue
+            proposals={visibleProposals}
+            selectedProposalId={selectedProposalId}
+            onSelectProposal={handleSelectProposal}
+            filter={filter}
+            onFilterChange={setFilter}
+            showConfirmed={showConfirmed}
+            onShowConfirmedChange={setShowConfirmed}
+            currentUserId={user.id}
+            userNameById={userNameById}
+            commentCountByProposalId={commentCountByProposalId}
+            alternativeCountByProposalId={alternativeCountByProposalId}
+          />
+        ) : (
+          <div className="h-full min-h-0">
+            <ResolverWorkspace
+              proposal={selectedProposal}
+              proposals={proposals}
+              currentUser={user}
+              availabilities={availabilities}
+              userNameById={userNameById}
+              alternativeCount={selectedProposal ? alternativeCountByProposalId[selectedProposal.id] || 0 : 0}
+              commentCount={selectedProposal ? commentCountByProposalId[selectedProposal.id] || 0 : 0}
+              onAddComment={handleAddComment}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

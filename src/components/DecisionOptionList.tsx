@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { formatResolverOptionLabel } from '@/lib/resolverUtils';
 import type { DecisionOption, DecisionVote, VotingMode } from '@/types';
 
 type DecisionOptionListProps = {
@@ -87,7 +88,7 @@ export function DecisionOptionList({
                       #{index + 1}
                     </span>
                   )}
-                  {option.label}
+                  {formatResolverOptionLabel(option, option.dimension)}
                 </p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   {isHighlighted && (

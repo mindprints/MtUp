@@ -1,0 +1,22 @@
+- generic [ref=e25]:
+  - banner [ref=e26]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - heading "Snookey's Here to Help." [level=1] [ref=e30]
+        - paragraph [ref=e31]: Welcome, Alice (Admin)
+      - generic [ref=e32]:
+        - group [ref=e33]:
+          - generic "Instructions" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Light
+          - checkbox "Toggle dark mode" [ref=e38]
+        - button "Sign out" [ref=e41] [cursor=pointer]
+  - main [ref=e42]:
+    - generic [ref=e44]:
+      - generic [ref=e46]: 09:41
+      - generic [ref=e52]:
+        - generic [ref=e54]:
+          - button "Admin" [ref=e55] [cursor=pointer]
+          - button "Resolver" [ref=e56] [cursor=pointer]
+          - button "Snooky" [ref=e57] [cursor=pointer]
+        - generic [ref=e61]: No proposals yet. Use Snooky below to draft one.

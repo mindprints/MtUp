@@ -7,6 +7,7 @@ import type {
   DecisionStatus,
   DecisionVote,
   Proposal,
+  ProposalContribution,
   VotingMode,
 } from '@/types';
 
@@ -43,6 +44,241 @@ export type ResolverVariantPlan = {
   drafts: ResolverVariantDraft[];
   reason: string | null;
 };
+
+export type ResolverSeedCandidate = {
+  label: string;
+  metadata?: Record<string, string>;
+};
+
+function parseDateRangeLabel(input: string): { startDate: string; endDate: string } | null {
+  const normalized = normalizeResolverLabel(input);
+  const rangeMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i);
+  if (!rangeMatch) return null;
+  return {
+    startDate: rangeMatch[1],
+    endDate: rangeMatch[2] || rangeMatch[1],
+  };
+}
+
+function normalizeResolverLabel(input: string): string {
+  return input.trim().replace(/\s+/g, ' ');
+}
+
+function splitRequirementValues(input: string): string[] {
+  return input
+    .split(/\r?\n|[;,]/)
+    .map((part) => normalizeResolverLabel(part.replace(/^(?:requirements?|needs?|must)\s*:\s*/i, '')))
+    .filter(Boolean);
+}
+
+function extractPrefixedValues(input: string, prefixes: string[]): string[] {
+  const prefixPattern = prefixes.join('|');
+  return input
+    .split(/\r?\n|;/)
+    .map((segment) => segment.trim())
+    .flatMap((segment) => {
+      const match = segment.match(new RegExp(`^(?:[-*•]\\s*)?(?:${prefixPattern})\\s*:\\s*(.+)$`, 'i'));
+      if (!match) return [];
+      return match[1]
+        .split(/\s*\|\s*|\s+or\s+/i)
+        .map((part) => normalizeResolverLabel(part))
+        .filter(Boolean);
+    });
+}
+
+function format12HourTo24Hour(hourText: string, minuteText: string | undefined, meridiem: string): string {
+  const rawHour = Number(hourText);
+  if (Number.isNaN(rawHour)) return '';
+  const minute = minuteText ? Number(minuteText) : 0;
+  if (Number.isNaN(minute) || minute < 0 || minute > 59) return '';
+  const normalizedHour = meridiem.toLowerCase() === 'p' ? (rawHour % 12) + 12 : rawHour % 12;
+  return `${String(normalizedHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function extractTimeCandidatesFromText(input: string): string[] {
+  const out = new Set<string>();
+  extractPrefixedValues(input, ['time', 'when']).forEach((value) => {
+    const normalized = normalizeResolverLabel(value);
+    if (normalized) out.add(normalized);
+  });
+
+  const twentyFourHourMatches = input.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g);
+  for (const match of twentyFourHourMatches) {
+    out.add(`${String(Number(match[1])).padStart(2, '0')}:${match[2]}`);
+  }
+
+  const twelveHourMatches = input.matchAll(/\b(1[0-2]|0?\d)(?::([0-5]\d))?\s*([ap])(?:\.?m\.?)\b/gi);
+  for (const match of twelveHourMatches) {
+    const formatted = format12HourTo24Hour(match[1], match[2], match[3]);
+    if (formatted) out.add(formatted);
+  }
+
+  return Array.from(out);
+}
+
+function extractPlaceCandidatesFromText(input: string): string[] {
+  return extractPrefixedValues(input, ['place', 'location', 'where', 'venue']);
+}
+
+function findNearbyTimeLabel(
+  contributionEntries: ProposalContribution[],
+  startIndex: number,
+  userId: string
+): string | null {
+  const origin = contributionEntries[startIndex];
+  if (!origin) return null;
+  const originTime = new Date(origin.createdAt).getTime();
+
+  for (let index = startIndex + 1; index < contributionEntries.length; index += 1) {
+    const candidate = contributionEntries[index];
+    if (!candidate) continue;
+    if (candidate.userId !== userId) break;
+    const deltaMs = Math.abs(new Date(candidate.createdAt).getTime() - originTime);
+    if (Number.isFinite(deltaMs) && deltaMs > 2 * 60 * 1000) break;
+    if (candidate.field === 'time' && typeof candidate.value.text === 'string') {
+      return normalizeResolverLabel(candidate.value.text);
+    }
+  }
+
+  return null;
+}
+
+export function formatResolverOptionLabel(option: DecisionOption, dimension: DecisionDimension): string {
+  if (dimension !== 'time') return option.label;
+
+  const startDate = option.metadata?.startDate;
+  const endDate = option.metadata?.endDate;
+  if (!startDate && !endDate) return option.label;
+
+  const normalizedLabel = normalizeResolverLabel(option.label);
+  const rangeText = startDate && endDate && startDate !== endDate ? `${startDate} to ${endDate}` : startDate || endDate || '';
+  if (!rangeText) return normalizedLabel;
+  if (normalizedLabel === rangeText) return normalizedLabel;
+  return `${rangeText} | ${normalizedLabel}`;
+}
+
+export function collectResolverSeedCandidates(
+  proposal: Proposal,
+  dimension: DecisionDimension,
+  contributionEntries: ProposalContribution[]
+): ResolverSeedCandidate[] {
+  const seeds: ResolverSeedCandidate[] = [];
+  const seen = new Set<string>();
+
+  const pushSeed = (label: string, metadata?: Record<string, string>) => {
+    const normalizedLabel = normalizeResolverLabel(label);
+    if (!normalizedLabel) return;
+    const key = metadata?.startDate || metadata?.endDate
+      ? `${dimension}|${normalizedLabel}|${metadata?.startDate || ''}|${metadata?.endDate || ''}`
+      : `${dimension}|${normalizedLabel}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    seeds.push({ label: normalizedLabel, ...(metadata ? { metadata } : {}) });
+  };
+
+  if (dimension === 'time') {
+    if (proposal.specifics?.date) {
+      const dateText = normalizeResolverLabel(proposal.specifics.date);
+      const rangeMatch = parseDateRangeLabel(dateText);
+      const baselineLabel =
+        proposal.type === 'event' && proposal.specifics?.time
+          ? normalizeResolverLabel(proposal.specifics.time)
+          : dateText;
+      pushSeed(
+        baselineLabel,
+        rangeMatch
+          ? {
+              startDate: rangeMatch.startDate,
+              endDate: rangeMatch.endDate,
+              source: 'proposal-baseline',
+            }
+          : { source: 'proposal-baseline' }
+      );
+    }
+
+    if (proposal.specifics?.time) {
+      pushSeed(proposal.specifics.time, { source: 'proposal-baseline' });
+    }
+
+    contributionEntries.forEach((entry, index) => {
+      if (entry.field === 'time' && typeof entry.value.text === 'string') {
+        pushSeed(entry.value.text, { source: 'proposal-thread' });
+      }
+      if (
+        entry.field === 'date' &&
+        (typeof entry.value.dateText === 'string' || typeof entry.value.text === 'string')
+      ) {
+        const dateText =
+          typeof entry.value.dateText === 'string' ? entry.value.dateText : String(entry.value.text);
+        const normalized = normalizeResolverLabel(dateText);
+        const rangeMatch = parseDateRangeLabel(normalized);
+        const dateAwareLabel =
+          proposal.type === 'event'
+            ? findNearbyTimeLabel(contributionEntries, index, entry.userId) ||
+              normalizeResolverLabel(proposal.specifics?.time || '') ||
+              normalized
+            : normalized;
+        pushSeed(
+          dateAwareLabel,
+          rangeMatch
+            ? {
+                startDate: rangeMatch.startDate,
+                endDate: rangeMatch.endDate,
+                source: 'proposal-thread',
+              }
+            : { source: 'proposal-thread' }
+        );
+      }
+    });
+
+    (proposal.comments || []).forEach((comment) => {
+      extractTimeCandidatesFromText(comment.text).forEach((label) =>
+        pushSeed(label, { source: 'proposal-comments' })
+      );
+    });
+  }
+
+  if (dimension === 'place') {
+    if (proposal.specifics?.location) {
+      pushSeed(proposal.specifics.location, { source: 'proposal-baseline' });
+    }
+
+    contributionEntries.forEach((entry) => {
+      if (entry.field === 'place' && typeof entry.value.text === 'string') {
+        pushSeed(entry.value.text, { source: 'proposal-thread' });
+      }
+    });
+
+    (proposal.comments || []).forEach((comment) => {
+      extractPlaceCandidatesFromText(comment.text).forEach((label) =>
+        pushSeed(label, { source: 'proposal-comments' })
+      );
+    });
+  }
+
+  if (dimension === 'requirement') {
+    splitRequirementValues(proposal.specifics?.requirements || '').forEach((label) =>
+      pushSeed(label, { source: 'proposal-baseline' })
+    );
+
+    (proposal.comments || []).forEach((comment) => {
+      if (!/requirement|require|need|must/i.test(comment.text)) return;
+      splitRequirementValues(comment.text).forEach((label) =>
+        pushSeed(label, { source: 'proposal-comments' })
+      );
+    });
+
+    contributionEntries.forEach((entry) => {
+      if (entry.field === 'requirements' && typeof entry.value.text === 'string') {
+        splitRequirementValues(entry.value.text).forEach((label) =>
+          pushSeed(label, { source: 'proposal-thread' })
+        );
+      }
+    });
+  }
+
+  return seeds;
+}
 
 function getVariantSignature(input: {
   parentProposalId: string;

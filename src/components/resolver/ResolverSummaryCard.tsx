@@ -1,4 +1,5 @@
 import type { Proposal } from '@/types';
+import { getProposalTimeSummary } from '@/components/ai-assistant/shared';
 
 type ResolverSummaryCardProps = {
   proposal: Proposal;
@@ -60,7 +61,7 @@ export function ResolverSummaryCard({
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
           <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Time</div>
-          <div className="mt-1">{proposal.specifics?.time || 'Not set'}</div>
+          <div className="mt-1">{getProposalTimeSummary(proposal) || 'Not set'}</div>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
           <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Place</div>
@@ -77,7 +78,7 @@ export function ResolverSummaryCard({
           {alternativeCount} alternatives
         </span>
         <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 dark:border-slate-700 dark:bg-slate-900">
-          {commentCount} comments
+          {commentCount} notes
         </span>
       </div>
     </section>

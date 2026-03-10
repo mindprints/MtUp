@@ -27,6 +27,27 @@ function getDefaultMode(dimension: DecisionDimension): VotingMode {
   return dimension === 'requirement' ? 'multi' : 'single';
 }
 
+function buildFinalizationNotice({
+  proposal,
+  currentUser,
+  memberCount,
+}: {
+  proposal: Proposal;
+  currentUser: User;
+  memberCount: number;
+}) {
+  const timeSummary = proposal.type === 'sejour'
+    ? [proposal.specifics?.startTime, proposal.specifics?.endTime].filter(Boolean).join(' - ')
+    : proposal.specifics?.time || '';
+  const summaryBits = [
+    proposal.specifics?.date ? `Date: ${proposal.specifics.date}` : null,
+    timeSummary ? `Time: ${timeSummary}` : null,
+    proposal.specifics?.location ? `Place: ${proposal.specifics.location}` : null,
+  ].filter(Boolean);
+
+  return `[Finalized notice] ${proposal.title} was confirmed by ${currentUser.name} on ${new Date().toLocaleString()}. ${summaryBits.join(' • ')}. Notice sent to ${memberCount} member${memberCount === 1 ? '' : 's'}.`;
+}
+
 export function ResolverWorkspace({
   proposal,
   proposals,
@@ -48,6 +69,8 @@ export function ResolverWorkspace({
   } = useProposals();
   const [majorityLockMessage, setMajorityLockMessage] = useState<string | null>(null);
   const [isLockingMajority, setIsLockingMajority] = useState(false);
+  const [finalizeMessage, setFinalizeMessage] = useState<string | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [variantMessage, setVariantMessage] = useState<string | null>(null);
   const [isCreatingVariants, setIsCreatingVariants] = useState(false);
   const canConfirm = proposal ? canConfirmDecision(currentUser, proposal) : false;
@@ -97,85 +120,161 @@ export function ResolverWorkspace({
 
   if (!proposal) {
     return (
-      <div className="flex min-h-0 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+      <div className="flex min-h-0 min-w-0 w-full items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
         Select a proposal to begin resolving it.
       </div>
     );
   }
 
-  const handleLockInMajority = async () => {
-    if (!canConfirm || isLockingMajority) return;
-
+  const applyResolverOutcome = async ({ finalize }: { finalize: boolean }) => {
     const nextSpecifics = { ...(proposal.specifics || {}) };
     let confirmedDimensions = 0;
-    setIsLockingMajority(true);
-    setMajorityLockMessage(null);
+    if (finalize) {
+      setIsFinalizing(true);
+      setFinalizeMessage(null);
+    } else {
+      setIsLockingMajority(true);
+      setMajorityLockMessage(null);
+    }
 
     try {
+      const pendingUpdates: Array<{
+        dimension: string;
+        confirmation: any;
+        config: any;
+        applySpecifics: (spec: any) => void;
+      }> = [];
+
       majorityPreview.forEach((entry) => {
         if (entry.winners.length === 0) return;
 
-        addDecisionConfirmation({
-          id: generateId(),
-          proposalId: proposal.id,
+        pendingUpdates.push({
           dimension: entry.dimension,
-          optionIds: entry.winners.map((option) => option.id),
-          confirmedBy: currentUser.id,
-          confirmedAt: new Date().toISOString(),
-          note: 'Locked in by majority from Resolver workspace.',
+          confirmation: {
+            id: generateId(),
+            proposalId: proposal.id,
+            dimension: entry.dimension,
+            optionIds: entry.winners.map((option) => option.id),
+            confirmedBy: currentUser.id,
+            confirmedAt: new Date().toISOString(),
+            note: 'Locked in by majority from Resolver workspace.',
+          },
+          config: {
+            proposalId: proposal.id,
+            dimension: entry.dimension,
+            mode: entry.mode,
+            status: 'confirmed',
+          },
+          applySpecifics: (spec: any) => {
+            if (entry.dimension === 'time') {
+              spec.time = entry.winners.map((option) => option.label).join(', ');
+              const first = entry.winners[0];
+              const startDate = first?.metadata?.startDate;
+              const endDate = first?.metadata?.endDate;
+              if (startDate && endDate) {
+                spec.date = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
+              }
+            }
+            if (entry.dimension === 'place') {
+              spec.location = entry.winners.map((option) => option.label).join(', ');
+            }
+            if (entry.dimension === 'requirement') {
+              spec.requirements = entry.winners.map((option) => option.label).join(', ');
+            }
+          },
         });
-
-        setDecisionConfig({
-          proposalId: proposal.id,
-          dimension: entry.dimension,
-          mode: entry.mode,
-          status: 'confirmed',
-        });
-
-        if (entry.dimension === 'time') {
-          nextSpecifics.time = entry.winners.map((option) => option.label).join(', ');
-          const first = entry.winners[0];
-          const startDate = first?.metadata?.startDate;
-          const endDate = first?.metadata?.endDate;
-          if (startDate && endDate) {
-            nextSpecifics.date = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
-          }
-        }
-
-        if (entry.dimension === 'place') {
-          nextSpecifics.location = entry.winners.map((option) => option.label).join(', ');
-        }
-
-        if (entry.dimension === 'requirement') {
-          nextSpecifics.requirements = entry.winners.map((option) => option.label).join(', ');
-        }
-
-        confirmedDimensions += 1;
       });
 
-      if (confirmedDimensions === 0) {
+      if (pendingUpdates.length === 0 && !finalize) {
         setMajorityLockMessage('No majority selection available yet.');
         return;
       }
 
-      const p = proposal as any;
-      const requiredDimensions: string[] =
-        p.requiredDimensions ||
-        p.dimensions ||
-        Object.keys(p.proposalSpecificRequirements || proposal.specifics || {});
-      const allRequiredDecided = requiredDimensions.every((d) => Boolean((nextSpecifics as any)[d]));
-
-      await updateProposal(proposal.id, {
-        status: allRequiredDecided ? 'confirmed' : proposal.status,
-        specifics: nextSpecifics,
+      const failures: string[] = [];
+      pendingUpdates.forEach((update) => {
+        try {
+          addDecisionConfirmation(update.confirmation);
+          setDecisionConfig(update.config);
+          update.applySpecifics(nextSpecifics);
+          confirmedDimensions += 1;
+        } catch (err) {
+          console.error(`Error applying updates for dimension: ${update.dimension}`, err);
+          failures.push(update.dimension);
+        }
       });
 
-      setMajorityLockMessage(
-        `Locked in majority selections for ${confirmedDimensions} dimension${confirmedDimensions === 1 ? '' : 's'}.`
+      if (failures.length > 0 && confirmedDimensions === 0) {
+        setMajorityLockMessage(`Failed to lock in selections. Errors in: ${failures.join(', ')}`);
+        return;
+      }
+
+      const requiredDimensions = Object.keys(proposal.specifics || {}).filter(
+        (key) => key !== 'resolver'
       );
+      const allRequiredDecided = requiredDimensions.every((d) =>
+        Boolean(nextSpecifics[d as keyof typeof nextSpecifics])
+      );
+
+      const nextComments = finalize
+        ? [
+          ...(proposal.comments || []),
+          {
+            id: generateId(),
+            userId: currentUser.id,
+            proposalId: proposal.id,
+            text: buildFinalizationNotice({
+              proposal: { ...proposal, specifics: nextSpecifics },
+              currentUser,
+              memberCount: userNameById.size,
+            }),
+            createdAt: new Date().toISOString(),
+          },
+        ]
+        : proposal.comments;
+
+      await updateProposal(proposal.id, {
+        status: finalize || allRequiredDecided ? 'confirmed' : proposal.status,
+        specifics: nextSpecifics,
+        ...(nextComments ? { comments: nextComments } : {}),
+      });
+
+      if (finalize) {
+        if (failures.length > 0) {
+          setFinalizeMessage(
+            `Finalized activity and posted notice, but some resolver dimensions did not save cleanly: ${failures.join(', ')}.`
+          );
+        } else {
+          setFinalizeMessage('Finalized activity and posted a notice to the group notes.');
+        }
+        return;
+      }
+
+      if (failures.length > 0) {
+        setMajorityLockMessage(
+          `Partially locked in ${confirmedDimensions} dimension(s), but failed to lock in: ${failures.join(', ')}.`
+        );
+      } else {
+        setMajorityLockMessage(
+          `Locked in majority selections for ${confirmedDimensions} dimension${confirmedDimensions === 1 ? '' : 's'}.`
+        );
+      }
     } finally {
-      setIsLockingMajority(false);
+      if (finalize) {
+        setIsFinalizing(false);
+      } else {
+        setIsLockingMajority(false);
+      }
     }
+  };
+
+  const handleLockInMajority = async () => {
+    if (!canConfirm || isLockingMajority) return;
+    await applyResolverOutcome({ finalize: false });
+  };
+
+  const handleFinalizeActivity = async () => {
+    if (!canConfirm || isFinalizing || proposal.status === 'confirmed') return;
+    await applyResolverOutcome({ finalize: true });
   };
 
   const handleCreateVariants = () => {
@@ -228,7 +327,10 @@ export function ResolverWorkspace({
   };
 
   return (
-    <div className="min-h-0 overflow-y-auto rounded-xl border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+    <div
+      data-screen-scroll-root="true"
+      className="hide-scrollbar h-full min-h-0 min-w-0 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+    >
       <div className="space-y-3">
         <ResolverSummaryCard
           proposal={proposal}
@@ -247,6 +349,18 @@ export function ResolverWorkspace({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleFinalizeActivity()}
+                disabled={!canConfirm || isFinalizing || proposal.status === 'confirmed'}
+                className="rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {proposal.status === 'confirmed'
+                  ? 'Already Finalized'
+                  : isFinalizing
+                    ? 'Finalizing...'
+                    : 'Finalize + Notify'}
+              </button>
               <button
                 type="button"
                 onClick={handleCreateVariants}
@@ -329,6 +443,11 @@ export function ResolverWorkspace({
           {majorityLockMessage && (
             <p className="mt-3 text-xs text-emerald-800 dark:text-emerald-300">
               {majorityLockMessage}
+            </p>
+          )}
+          {finalizeMessage && (
+            <p className="mt-3 text-xs text-emerald-800 dark:text-emerald-300">
+              {finalizeMessage}
             </p>
           )}
           {variantMessage && (
