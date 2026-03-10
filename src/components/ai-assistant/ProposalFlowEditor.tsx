@@ -316,8 +316,8 @@ export function ProposalFlowEditor({
                                         onClick={() => {
                                             if (proposal.type === 'sejour') {
                                                 const parsedTimes = parseSejourTimeText(text);
-                                                updateProposalFlowEditField(proposal.id, 'startTime', parsedTimes.startTime);
-                                                updateProposalFlowEditField(proposal.id, 'endTime', parsedTimes.endTime);
+                                                updateProposalFlowEditField(proposal.id, 'startTime', parsedTimes.startTime || '');
+                                                updateProposalFlowEditField(proposal.id, 'endTime', parsedTimes.endTime || '');
                                                 return;
                                             }
                                             updateProposalFlowEditField(proposal.id, 'time', text);

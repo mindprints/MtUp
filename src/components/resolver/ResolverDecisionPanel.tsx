@@ -43,6 +43,19 @@ function sameOptionIdList(left: string[], right: string[]): boolean {
   return left.every((value, index) => value === right[index]);
 }
 
+function computeDecisionKey(
+  dimension: string,
+  label: string,
+  metadata?: Record<string, string>
+): string {
+  const normLabel = label.trim().toLowerCase();
+  const startDate = metadata?.startDate;
+  const endDate = metadata?.endDate;
+  return startDate || endDate
+    ? `${dimension}|${normLabel}|${startDate || ''}|${endDate || ''}`
+    : `${dimension}|${normLabel}`;
+}
+
 export function ResolverDecisionPanel({
   proposal,
   dimension,
@@ -109,20 +122,12 @@ export function ResolverDecisionPanel({
 
   useEffect(() => {
     const existingKeys = new Set(
-      options.map((option) => {
-        const startDate = option.metadata?.startDate;
-        const endDate = option.metadata?.endDate;
-        return startDate || endDate
-          ? `${dimension}|${option.label.trim().toLowerCase()}|${startDate || ''}|${endDate || ''}`
-          : `${dimension}|${option.label.trim().toLowerCase()}`;
-      })
+      options.map((option) => computeDecisionKey(dimension, option.label, option.metadata))
     );
 
     const seeds = collectResolverSeedCandidates(proposal, dimension, contributionEntries)
       .filter((seed) => {
-        const key = seed.metadata?.startDate || seed.metadata?.endDate
-          ? `${dimension}|${seed.label.trim().toLowerCase()}|${seed.metadata?.startDate || ''}|${seed.metadata?.endDate || ''}`
-          : `${dimension}|${seed.label.trim().toLowerCase()}`;
+        const key = computeDecisionKey(dimension, seed.label, seed.metadata);
         if (existingKeys.has(key)) return false;
         existingKeys.add(key);
         return true;
@@ -157,11 +162,7 @@ export function ResolverDecisionPanel({
     const seen = new Set<string>();
     const duplicateIds = options
       .filter((option) => {
-        const startDate = option.metadata?.startDate;
-        const endDate = option.metadata?.endDate;
-        const key = startDate || endDate
-          ? `${dimension}|${option.label.trim().toLowerCase()}|${startDate || ''}|${endDate || ''}`
-          : `${dimension}|${option.label.trim().toLowerCase()}`;
+        const key = computeDecisionKey(dimension, option.label, option.metadata);
         if (seen.has(key)) return true;
         seen.add(key);
         return false;
@@ -395,15 +396,14 @@ export function ResolverDecisionPanel({
 
       <div className="space-y-3">
         <div
-          className={`rounded-md border p-3 ${
-            consensusState.tone === 'good'
+          className={`rounded-md border p-3 ${consensusState.tone === 'good'
               ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20'
               : consensusState.tone === 'info'
                 ? 'border-sky-200 bg-sky-50 dark:border-sky-900/40 dark:bg-sky-950/20'
                 : consensusState.tone === 'warm'
                   ? 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20'
                   : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
-          }`}
+            }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -420,15 +420,14 @@ export function ResolverDecisionPanel({
               </div>
               <div className="mt-1 h-2 rounded-full bg-gray-200 dark:bg-slate-700">
                 <div
-                  className={`h-2 rounded-full ${
-                    consensusState.tone === 'good'
+                  className={`h-2 rounded-full ${consensusState.tone === 'good'
                       ? 'bg-emerald-500'
                       : consensusState.tone === 'info'
                         ? 'bg-sky-500'
                         : consensusState.tone === 'warm'
                           ? 'bg-amber-500'
                           : 'bg-gray-400'
-                  }`}
+                    }`}
                   style={{ width: `${consensusState.supportPercent}%` }}
                 />
               </div>

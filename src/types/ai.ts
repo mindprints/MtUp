@@ -13,6 +13,11 @@ export type AiActionProposal = {
   summary: string;
   requiresApproval: boolean;
   impact?: string;
+  /**
+   * When kind === 'create_proposal', the payload must include a primary proposalDraft (proposalDraft: AiProposalDraft)
+   * and may include alternative drafts (proposalDrafts?: AiProposalDraft[]).
+   * If proposalDrafts is provided, the first element should be the same as the primary proposalDraft.
+   */
   payload?: {
     kind: 'create_proposal';
     proposalDraft: AiProposalDraft;

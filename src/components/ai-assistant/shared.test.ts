@@ -102,5 +102,19 @@ describe('sejour alternative time helpers', () => {
       startTime: '08:00',
       endTime: '17:15',
     });
+
+    // edge cases
+    expect(parseSejourTimeText('08:00')).toEqual({
+      startTime: '08:00',
+      endTime: undefined,
+    });
+    expect(parseSejourTimeText('')).toEqual({
+      startTime: undefined,
+      endTime: undefined,
+    });
+    expect(parseSejourTimeText('invalid')).toEqual({
+      startTime: undefined,
+      endTime: undefined,
+    });
   });
 });

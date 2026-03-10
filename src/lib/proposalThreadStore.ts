@@ -10,14 +10,14 @@ function normalize(raw: unknown): ProposalContribution[] {
     const c = item as Partial<ProposalContribution> | null;
     return Boolean(
       c &&
-        typeof c.id === 'string' &&
-        typeof c.proposalId === 'string' &&
-        typeof c.userId === 'string' &&
-        typeof c.kind === 'string' &&
-        c.value &&
-        typeof c.value === 'object' &&
-        typeof c.createdAt === 'string' &&
-        typeof c.provenance === 'string'
+      typeof c.id === 'string' &&
+      typeof c.proposalId === 'string' &&
+      typeof c.userId === 'string' &&
+      typeof c.kind === 'string' &&
+      c.value &&
+      typeof c.value === 'object' &&
+      typeof c.createdAt === 'string' &&
+      typeof c.provenance === 'string'
     );
   });
 }
@@ -37,6 +37,14 @@ function readAll(): ProposalContribution[] {
 function writeAll(rows: ProposalContribution[]): void {
   cachedRows = normalize(rows);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedRows));
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY) {
+      cachedRows = null;
+    }
+  });
 }
 
 function parseDateInputs(input: string): string[] {
@@ -162,7 +170,6 @@ export const proposalThreadStore = {
       createdAt: new Date().toISOString(),
       provenance: 'manual_entry',
     };
-    this.add(contribution);
 
     // Also add an explicit availability-shaped contribution for auditability of the assumption.
     const auditContribution: ProposalContribution = {
@@ -180,7 +187,8 @@ export const proposalThreadStore = {
       createdAt: new Date().toISOString(),
       provenance: 'inferred_from_delta',
     };
-    this.add(auditContribution);
+
+    this.addMany([contribution, auditContribution]);
 
     return { contribution, auditContribution, impliedDates };
   },

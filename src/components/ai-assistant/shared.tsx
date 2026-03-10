@@ -146,12 +146,12 @@ export function formatSejourTimeText(startTime: string, endTime: string): string
   return normalizedStartTime || normalizedEndTime;
 }
 
-export function parseSejourTimeText(input: string): { startTime: string; endTime: string } {
+export function parseSejourTimeText(input: string): { startTime: string | undefined; endTime: string | undefined } {
   const normalized = formatTo24HourTimeText(input || '');
   const matches = normalized.match(/\b([01]\d|2[0-3]):([0-5]\d)\b/g) || [];
   return {
-    startTime: normalizeTimeInputValue(matches[0] || ''),
-    endTime: normalizeTimeInputValue(matches[1] || ''),
+    startTime: matches[0] ? normalizeTimeInputValue(matches[0]) : undefined,
+    endTime: matches[1] ? normalizeTimeInputValue(matches[1]) : undefined,
   };
 }
 

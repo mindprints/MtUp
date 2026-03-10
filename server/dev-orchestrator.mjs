@@ -201,17 +201,17 @@ async function classifyIntent(message, options = {}) {
       (proposalMode
         ? result === 'propose_activity' || result === 'unsupported'
         : result === 'list_confirmed' ||
-          result === 'list_my_availability' ||
-          result === 'list_attendees' ||
-          result === 'list_ready_to_confirm' ||
-          result === 'list_missing_replies' ||
-          result === 'summarize_activity_status' ||
-          result === 'offer_reminder' ||
-          result === 'execute_reminder' ||
-          result === 'offer_confirmation_email' ||
-          result === 'execute_confirmation_email' ||
-          result === 'propose_activity' ||
-          result === 'unsupported')
+        result === 'list_my_availability' ||
+        result === 'list_attendees' ||
+        result === 'list_ready_to_confirm' ||
+        result === 'list_missing_replies' ||
+        result === 'summarize_activity_status' ||
+        result === 'offer_reminder' ||
+        result === 'execute_reminder' ||
+        result === 'offer_confirmation_email' ||
+        result === 'execute_confirmation_email' ||
+        result === 'propose_activity' ||
+        result === 'unsupported')
     ) {
       return result;
     }
@@ -522,10 +522,10 @@ function buildCoordinationSnapshot({ proposals, availabilities, members }) {
       proposal.status === 'confirmed'
         ? 'confirmed'
         : attendees.length >= readyThreshold && missing.length <= 1
-        ? 'ready_to_confirm'
-        : attendees.length >= Math.max(2, Math.ceil(totalMembers * 0.4))
-        ? 'taking_shape'
-        : 'waiting_for_replies';
+          ? 'ready_to_confirm'
+          : attendees.length >= Math.max(2, Math.ceil(totalMembers * 0.4))
+            ? 'taking_shape'
+            : 'waiting_for_replies';
     byProposalId.set(proposal.id, {
       proposal,
       attendees,
@@ -613,8 +613,8 @@ function formatActivityStatusAnswer(snapshot) {
     snapshot.state === 'ready_to_confirm'
       ? 'looks ready to confirm'
       : snapshot.state === 'taking_shape'
-      ? 'is taking shape'
-      : 'is still waiting on replies';
+        ? 'is taking shape'
+        : 'is still waiting on replies';
   const attendeesText =
     snapshot.attendees.length > 0 ? `${snapshot.attendees.join(', ')} are in.` : 'No one is fully in yet.';
   const missingText =
@@ -931,8 +931,8 @@ async function extractProposalDraftFields(rawMessage, temporalRequest) {
       temporalRequest.kind === 'dates'
         ? temporalRequest.dates.map((d) => d.isoDate).join(', ')
         : temporalRequest.kind === 'window'
-        ? `${temporalRequest.window.startIso} to ${temporalRequest.window.endIso}`
-        : '',
+          ? `${temporalRequest.window.startIso} to ${temporalRequest.window.endIso}`
+          : '',
     times: inferBasicTimeFromMessage(rawMessage),
     invitees:
       /\binvite everyone\b|\binvite all\b|\bour group\b|\bgroup\b/.test(message)
@@ -1262,73 +1262,73 @@ async function buildActivityProposalPreview(rawMessage) {
   const shouldCreateMultipleIdeas = requestedIdeaCount > 1;
   const proposalDrafts = shouldCreateMultipleIdeas
     ? buildMultipleActivityProposalDrafts({
-        message,
-        temporalRequest,
-        extractedFields,
-        inviteesFieldValue,
-        placeFieldValue,
-        requirementsFieldValue,
-        commentsFieldValue,
-        count: requestedIdeaCount,
-      })
+      message,
+      temporalRequest,
+      extractedFields,
+      inviteesFieldValue,
+      placeFieldValue,
+      requirementsFieldValue,
+      commentsFieldValue,
+      count: requestedIdeaCount,
+    })
     : [
-        buildActivityProposalDraft({
-          title: inferredTitle,
-          proposalType,
-          emoji: '🎉',
-          dates: resolvedDatesFieldValue,
-          times: timeFieldValue,
-          place: placeFieldValue,
-          requirements: requirementsFieldValue,
-          comments: commentsFieldValue,
-          invitees: inviteesFieldValue,
-        }),
-      ];
+      buildActivityProposalDraft({
+        title: inferredTitle,
+        proposalType,
+        emoji: '🎉',
+        dates: resolvedDatesFieldValue,
+        times: timeFieldValue,
+        place: placeFieldValue,
+        requirements: requirementsFieldValue,
+        comments: commentsFieldValue,
+        invitees: inviteesFieldValue,
+      }),
+    ];
 
   const assistantLines = shouldCreateMultipleIdeas
     ? [
-        `I drafted ${proposalDrafts.length} ${activityLabel} ideas for you.`,
-        'Edit any fields, then propose the ones you want to keep.',
-      ]
+      `I drafted ${proposalDrafts.length} ${activityLabel} ideas for you.`,
+      'Edit any fields, then propose the ones you want to keep.',
+    ]
     : [`I drafted a ${activityLabel} proposal form for you.`, 'Edit any fields, then click Propose.'];
 
   const summary = shouldCreateMultipleIdeas
     ? [
-        `Propose ${proposalDrafts.length} ${activityLabel} ideas`,
-        temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
-        inviteEveryone || groupAudienceRequested ? 'for everyone in group' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')
+      `Propose ${proposalDrafts.length} ${activityLabel} ideas`,
+      temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
+      inviteEveryone || groupAudienceRequested ? 'for everyone in group' : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
     : [
-        `Propose ${activityLabel}`,
-        temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
-        temporalRequest.kind === 'dates'
-          ? `(${temporalRequest.dates.map((d) => d.label.replace(/\s*\(\d{4}-\d{2}-\d{2}\)/, '')).join(' / ')})`
-          : '',
-        inviteEveryone || groupAudienceRequested ? 'and invite everyone in group' : '',
-      ]
-        .filter(Boolean)
-        .join(' ');
+      `Propose ${activityLabel}`,
+      temporalRequest.kind === 'window' ? `for ${temporalRequest.window.label}` : '',
+      temporalRequest.kind === 'dates'
+        ? `(${temporalRequest.dates.map((d) => d.label.replace(/\s*\(\d{4}-\d{2}-\d{2}\)/, '')).join(' / ')})`
+        : '',
+      inviteEveryone || groupAudienceRequested ? 'and invite everyone in group' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
 
   const impact = shouldCreateMultipleIdeas
     ? [
-        candidateWindowLabel
-          ? `Planning window: ${candidateWindowLabel}`
-          : candidateDates.length > 0
+      candidateWindowLabel
+        ? `Planning window: ${candidateWindowLabel}`
+        : candidateDates.length > 0
           ? `Candidate dates: ${candidateDates.join(', ')}`
           : 'Planning window to be chosen',
-        `Draft ideas: ${proposalDrafts.map((draft) => draft.title).join(', ')}`,
-        `Invitees: ${inviteesFieldValue}`,
-      ].join('. ') + '.'
+      `Draft ideas: ${proposalDrafts.map((draft) => draft.title).join(', ')}`,
+      `Invitees: ${inviteesFieldValue}`,
+    ].join('. ') + '.'
     : [
-        candidateDates.length > 0
-          ? `Candidate dates: ${candidateDates.join(', ')}`
-          : candidateWindowLabel
+      candidateDates.length > 0
+        ? `Candidate dates: ${candidateDates.join(', ')}`
+        : candidateWindowLabel
           ? `Candidate window: ${candidateWindowLabel}`
           : 'Candidate date to be chosen',
-        `Invitees: ${inviteesFieldValue}`,
-      ].join('. ') + '.';
+      `Invitees: ${inviteesFieldValue}`,
+    ].join('. ') + '.';
 
   return {
     assistantText: assistantLines.join('\n'),
@@ -1443,6 +1443,61 @@ async function generateNaturalLanguageAnswer({ userMessage, intent, rows }) {
   }
 
   return 'Read-only mode is active. I can currently answer confirmed activities and your availability.';
+}
+
+function handleCoordinationIntent(intent, rawMessage, coordinationSnapshots, threadState) {
+  if (intent === 'list_ready_to_confirm') {
+    return formatReadyToConfirmAnswer(coordinationSnapshots);
+  }
+
+  const snapshot = findProposalSnapshotFromMessage(rawMessage, coordinationSnapshots, threadState);
+  if (!snapshot) {
+    return formatProposalDisambiguation(coordinationSnapshots);
+  }
+
+  if (intent === 'list_missing_replies') {
+    threadState.lastReferencedProposalId = snapshot.proposal.id;
+    return formatMissingRepliesAnswer(snapshot);
+  } else if (intent === 'summarize_activity_status') {
+    threadState.lastReferencedProposalId = snapshot.proposal.id;
+    return formatActivityStatusAnswer(snapshot);
+  } else if (intent === 'offer_reminder') {
+    threadState.lastReferencedProposalId = snapshot.proposal.id;
+    if (snapshot.missing.length === 0) {
+      return `No reminder is needed for ${snapshot.proposal.title}. Everyone has replied.`;
+    } else {
+      return `I can remind ${snapshot.missing.join(' and ')} about ${snapshot.proposal.title}. Should I send it now?`;
+    }
+  } else if (intent === 'execute_reminder') {
+    if (!threadState.lastReferencedProposalId || !coordinationSnapshots.has(threadState.lastReferencedProposalId)) {
+      return 'I do not have a reminder target yet. Ask me who is still missing first.';
+    } else {
+      const target = coordinationSnapshots.get(threadState.lastReferencedProposalId);
+      if (!target || target.missing.length === 0) {
+        return `No reminder is needed for ${target?.proposal.title || 'that activity'}.`;
+      } else {
+        return `Reminder emails are not wired yet. The people to remind for ${target.proposal.title} are ${target.missing.join(' and ')}.`;
+      }
+    }
+  } else if (intent === 'offer_confirmation_email') {
+    threadState.lastReferencedProposalId = snapshot.proposal.id;
+    if (snapshot.state !== 'ready_to_confirm') {
+      return `${snapshot.proposal.title} is not ready to confirm yet. ${snapshot.missing.length > 0 ? `Still waiting on ${snapshot.missing.join(' and ')}.` : 'I would wait a bit longer.'}`;
+    } else {
+      return `I can confirm ${snapshot.proposal.title} for ${snapshot.planSummary} and send confirmation emails with calendar invites. Should I do that now?`;
+    }
+  } else if (intent === 'execute_confirmation_email') {
+    if (!threadState.lastReferencedProposalId || !coordinationSnapshots.has(threadState.lastReferencedProposalId)) {
+      return 'I do not have a confirmation target yet. Ask me what is ready to confirm first.';
+    } else {
+      const target = coordinationSnapshots.get(threadState.lastReferencedProposalId);
+      if (!target || target.state !== 'ready_to_confirm') {
+        return `${target?.proposal.title || 'That activity'} is not ready to confirm yet.`;
+      } else {
+        return `Confirmation emails with calendar invites are not wired yet. ${target.proposal.title} is the activity that looks ready to confirm.`;
+      }
+    }
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -1583,56 +1638,7 @@ const server = http.createServer(async (req, res) => {
           const members = await fetchActiveGroupMembers({ authToken, activeGroupId });
           coordinationSnapshots = buildCoordinationSnapshot({ proposals, availabilities, members });
 
-            if (intent === 'list_ready_to_confirm') {
-              assistantText = formatReadyToConfirmAnswer(coordinationSnapshots);
-            } else {
-              const snapshot = findProposalSnapshotFromMessage(rawMessage, coordinationSnapshots, threadState);
-              if (!snapshot) {
-                assistantText = formatProposalDisambiguation(coordinationSnapshots);
-              } else if (intent === 'list_missing_replies') {
-              threadState.lastReferencedProposalId = snapshot.proposal.id;
-              assistantText = formatMissingRepliesAnswer(snapshot);
-            } else if (intent === 'summarize_activity_status') {
-              threadState.lastReferencedProposalId = snapshot.proposal.id;
-              assistantText = formatActivityStatusAnswer(snapshot);
-            } else if (intent === 'offer_reminder') {
-              threadState.lastReferencedProposalId = snapshot.proposal.id;
-              if (snapshot.missing.length === 0) {
-                assistantText = `No reminder is needed for ${snapshot.proposal.title}. Everyone has replied.`;
-              } else {
-                assistantText = `I can remind ${snapshot.missing.join(' and ')} about ${snapshot.proposal.title}. Should I send it now?`;
-              }
-            } else if (intent === 'execute_reminder') {
-              if (!threadState.lastReferencedProposalId || !coordinationSnapshots.has(threadState.lastReferencedProposalId)) {
-                assistantText = 'I do not have a reminder target yet. Ask me who is still missing first.';
-              } else {
-                const target = coordinationSnapshots.get(threadState.lastReferencedProposalId);
-                if (!target || target.missing.length === 0) {
-                  assistantText = `No reminder is needed for ${target?.proposal.title || 'that activity'}.`;
-                } else {
-                  assistantText = `Reminder emails are not wired yet. The people to remind for ${target.proposal.title} are ${target.missing.join(' and ')}.`;
-                }
-              }
-            } else if (intent === 'offer_confirmation_email') {
-              threadState.lastReferencedProposalId = snapshot.proposal.id;
-              if (snapshot.state !== 'ready_to_confirm') {
-                assistantText = `${snapshot.proposal.title} is not ready to confirm yet. ${snapshot.missing.length > 0 ? `Still waiting on ${snapshot.missing.join(' and ')}.` : 'I would wait a bit longer.'}`;
-              } else {
-                assistantText = `I can confirm ${snapshot.proposal.title} for ${snapshot.planSummary} and send confirmation emails with calendar invites. Should I do that now?`;
-              }
-            } else if (intent === 'execute_confirmation_email') {
-              if (!threadState.lastReferencedProposalId || !coordinationSnapshots.has(threadState.lastReferencedProposalId)) {
-                assistantText = 'I do not have a confirmation target yet. Ask me what is ready to confirm first.';
-              } else {
-                const target = coordinationSnapshots.get(threadState.lastReferencedProposalId);
-                if (!target || target.state !== 'ready_to_confirm') {
-                  assistantText = `${target?.proposal.title || 'That activity'} is not ready to confirm yet.`;
-                } else {
-                  assistantText = `Confirmation emails with calendar invites are not wired yet. ${target.proposal.title} is the activity that looks ready to confirm.`;
-                }
-              }
-            }
-          }
+          assistantText = handleCoordinationIntent(intent, rawMessage, coordinationSnapshots, threadState);
         } else if (intent === 'propose_activity') {
           const preview = await buildActivityProposalPreview(rawMessage);
           assistantText = preview.assistantText;

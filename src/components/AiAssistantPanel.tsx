@@ -97,9 +97,9 @@ function getScopedActionProposal(
     payload:
       proposal.payload?.kind === 'create_proposal'
         ? {
-            ...proposal.payload,
-            proposalDraft: draft,
-          }
+          ...proposal.payload,
+          proposalDraft: draft,
+        }
         : proposal.payload,
   };
 }
@@ -408,28 +408,28 @@ export function AiAssistantPanel({
           ]
           : []),
       ];
-        const createdProposal: Proposal = {
-          id: createdProposalId,
-          title: formValues.title.trim(),
-          type: draft.type,
-          emoji: draft.emoji || '🎉',
-          createdBy: userId,
-          authoredBy: userId,
-          createdAt,
-          status: 'proposed',
-          specifics: {
-            ...(dateValue ? { date: dateValue } : {}),
-            ...(draft.type === 'sejour'
-              ? {
-                  ...(startTimeValue ? { startTime: startTimeValue } : {}),
-                  ...(endTimeValue ? { endTime: endTimeValue } : {}),
-                }
-              : timeValue
-                ? { time: timeValue }
-                : {}),
-            ...(placeValue ? { location: placeValue } : {}),
-            ...(requirementsValue ? { requirements: requirementsValue } : {}),
-          },
+      const createdProposal: Proposal = {
+        id: createdProposalId,
+        title: formValues.title.trim(),
+        type: draft.type,
+        emoji: draft.emoji || '🎉',
+        createdBy: userId,
+        authoredBy: userId,
+        createdAt,
+        status: 'proposed',
+        specifics: {
+          ...(dateValue ? { date: dateValue } : {}),
+          ...(draft.type === 'sejour'
+            ? {
+              ...(startTimeValue ? { startTime: startTimeValue } : {}),
+              ...(endTimeValue ? { endTime: endTimeValue } : {}),
+            }
+            : timeValue
+              ? { time: timeValue }
+              : {}),
+          ...(placeValue ? { location: placeValue } : {}),
+          ...(requirementsValue ? { requirements: requirementsValue } : {}),
+        },
         ...(createdComments.length > 0 ? { comments: createdComments } : {}),
       };
 
@@ -487,15 +487,7 @@ export function AiAssistantPanel({
       if (canGenerateProposalThumbnail()) {
         void handleGenerateProposalThumbnail(createdProposal);
       }
-      setPendingAlternativeSuggestionsByDraftKey((prev) => ({
-        ...prev,
-        [draftKey]: [],
-      }));
-      setProposalFlowAlternativeDraftsByDraftKey((prev) => ({
-        ...prev,
-        [draftKey]: EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT,
-      }));
-      setCompletedActionKeys((prev) => ({ ...prev, [draftKey]: true }));
+
       setActionProposalsByMessageId((prev) => {
         const current = prev[messageId];
         if (!current) return prev;
@@ -643,8 +635,8 @@ export function AiAssistantPanel({
         endDateSuggestion: previous?.endDateSuggestion || parsed.endDate,
         timeSuggestion:
           proposal?.type === 'sejour' ? '' : normalizeTimeInputValue(previous?.timeSuggestion || ''),
-        startTimeSuggestion: previous?.startTimeSuggestion || parsedTimes.startTime,
-        endTimeSuggestion: previous?.endTimeSuggestion || parsedTimes.endTime,
+        startTimeSuggestion: previous?.startTimeSuggestion || parsedTimes.startTime || '',
+        endTimeSuggestion: previous?.endTimeSuggestion || parsedTimes.endTime || '',
         placeSuggestion: previous?.placeSuggestion || '',
         isSuggestModalOpen: true,
       },
@@ -667,8 +659,8 @@ export function AiAssistantPanel({
           parseDateRangeFromText(prev[proposalId]?.dateSuggestion || '').endDate,
         timeSuggestion:
           proposal?.type === 'sejour' ? '' : normalizeTimeInputValue(prev[proposalId]?.timeSuggestion || ''),
-        startTimeSuggestion: prev[proposalId]?.startTimeSuggestion || parsedTimes.startTime,
-        endTimeSuggestion: prev[proposalId]?.endTimeSuggestion || parsedTimes.endTime,
+        startTimeSuggestion: prev[proposalId]?.startTimeSuggestion || parsedTimes.startTime || '',
+        endTimeSuggestion: prev[proposalId]?.endTimeSuggestion || parsedTimes.endTime || '',
         placeSuggestion: prev[proposalId]?.placeSuggestion || '',
         isSuggestModalOpen: false,
       },
@@ -1104,7 +1096,7 @@ export function AiAssistantPanel({
   const latestProposalFlowDraftValues =
     latestProposalFlowPrimaryDraftKey && latestProposalFlowPrimaryDraft
       ? proposalFlowDraftValuesByDraftKey[latestProposalFlowPrimaryDraftKey] ||
-        getInitialDraftValues(latestProposalFlowPrimaryDraft)
+      getInitialDraftValues(latestProposalFlowPrimaryDraft)
       : null;
   const userNameById = new Map(displayGroupUsers.map((member) => [member.id, member.name]));
 
@@ -1143,92 +1135,92 @@ export function AiAssistantPanel({
               {messages.length > 0 && (
                 <div className="space-y-2">
                   {messages.map((message) => {
-                      const draftProposal = actionProposalsByMessageId[message.id];
-                      const draftsForMessage = draftProposal
-                        ? getActionProposalDrafts(draftProposal)
-                        : [];
-                      const primaryDraft = draftsForMessage[0] || null;
-                      const primaryDraftKey =
-                        primaryDraft && draftProposal
-                          ? getScopedDraftKey(message.id, primaryDraft.id)
-                          : null;
-                      const shouldShowDraftDetails =
+                    const draftProposal = actionProposalsByMessageId[message.id];
+                    const draftsForMessage = draftProposal
+                      ? getActionProposalDrafts(draftProposal)
+                      : [];
+                    const primaryDraft = draftsForMessage[0] || null;
+                    const primaryDraftKey =
+                      primaryDraft && draftProposal
+                        ? getScopedDraftKey(message.id, primaryDraft.id)
+                        : null;
+                    const shouldShowDraftDetails =
+                      message.role === 'assistant' &&
+                      Boolean(draftProposal) &&
+                      !hiddenActionMessageIds[message.id];
+                    const shouldShowMessageBubble =
+                      !(
                         message.role === 'assistant' &&
                         Boolean(draftProposal) &&
-                        !hiddenActionMessageIds[message.id];
-                      const shouldShowMessageBubble =
-                        !(
-                          message.role === 'assistant' &&
-                          Boolean(draftProposal) &&
-                          !hiddenActionMessageIds[message.id]
-                        );
-                      const draftValues = primaryDraftKey && primaryDraft
-                        ? proposalFlowDraftValuesByDraftKey[primaryDraftKey] || getInitialDraftValues(primaryDraft)
-                        : null;
-                      const draftDateRange = draftValues
-                        ? parseDateRangeFromText(draftValues.dates)
-                        : { startDate: '', endDate: '' };
-                      const isSejourDraft = primaryDraft?.type === 'sejour';
-                      const alternativeDraft = primaryDraftKey
-                        ? proposalFlowAlternativeDraftsByDraftKey[primaryDraftKey] || EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT
-                        : EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT;
-                      const pendingAlternatives = primaryDraftKey
-                        ? pendingAlternativeSuggestionsByDraftKey[primaryDraftKey] || []
-                        : [];
-                      const hasMultipleDrafts = draftsForMessage.length > 1;
-                      return (
-                        <div key={message.id} className="space-y-1.5">
-                          {shouldShowMessageBubble && (
-                            <div
-                              className={`rounded px-3 py-2 text-sm ${message.role === 'user'
-                                ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
-                                : 'border border-gray-200 bg-white text-gray-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
-                                }`}
-                            >
-                              <div className="text-[10px] uppercase tracking-wide opacity-70">
-                                {message.role === 'assistant' ? 'Snooky' : message.role}
-                              </div>
-                              <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                        !hiddenActionMessageIds[message.id]
+                      );
+                    const draftValues = primaryDraftKey && primaryDraft
+                      ? proposalFlowDraftValuesByDraftKey[primaryDraftKey] || getInitialDraftValues(primaryDraft)
+                      : null;
+                    const draftDateRange = draftValues
+                      ? parseDateRangeFromText(draftValues.dates)
+                      : { startDate: '', endDate: '' };
+                    const isSejourDraft = primaryDraft?.type === 'sejour';
+                    const alternativeDraft = primaryDraftKey
+                      ? proposalFlowAlternativeDraftsByDraftKey[primaryDraftKey] || EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT
+                      : EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT;
+                    const pendingAlternatives = primaryDraftKey
+                      ? pendingAlternativeSuggestionsByDraftKey[primaryDraftKey] || []
+                      : [];
+                    const hasMultipleDrafts = draftsForMessage.length > 1;
+                    return (
+                      <div key={message.id} className="space-y-1.5">
+                        {shouldShowMessageBubble && (
+                          <div
+                            className={`rounded px-3 py-2 text-sm ${message.role === 'user'
+                              ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
+                              : 'border border-gray-200 bg-white text-gray-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+                              }`}
+                          >
+                            <div className="text-[10px] uppercase tracking-wide opacity-70">
+                              {message.role === 'assistant' ? 'Snooky' : message.role}
                             </div>
-                          )}
-                          {shouldShowDraftDetails && (
-                            <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
-                              {draftProposal && hasMultipleDrafts ? (
-                                <div className="mt-1 space-y-2">
-                                  <p className="text-[11px] font-medium text-sky-800 dark:text-sky-200">
-                                    Review each idea separately and propose only the ones worth keeping.
-                                  </p>
-                                  {draftsForMessage.map((draft, draftIndex) => {
-                                    const scopedDraftKey = getScopedDraftKey(message.id, draft.id);
-                                    const scopedProposal = getScopedActionProposal(
-                                      draftProposal,
-                                      draft,
-                                      draftsForMessage.length
-                                    );
-                                    return (
-                                      <div key={scopedDraftKey} className="space-y-1">
-                                        <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                                          Idea {draftIndex + 1}
-                                        </div>
-                                        <AiProposalFormCard
-                                          proposal={scopedProposal}
-                                          onPropose={(values, proposal) =>
-                                            handleProposeFromDraft(
-                                              message.id,
-                                              scopedDraftKey,
-                                              proposal,
-                                              values
-                                            )
-                                          }
-                                          isSubmitting={executingActionKey === scopedDraftKey}
-                                          isCompleted={Boolean(completedActionKeys[scopedDraftKey])}
-                                        />
+                            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                          </div>
+                        )}
+                        {shouldShowDraftDetails && (
+                          <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
+                            {draftProposal && hasMultipleDrafts ? (
+                              <div className="mt-1 space-y-2">
+                                <p className="text-[11px] font-medium text-sky-800 dark:text-sky-200">
+                                  Review each idea separately and propose only the ones worth keeping.
+                                </p>
+                                {draftsForMessage.map((draft, draftIndex) => {
+                                  const scopedDraftKey = getScopedDraftKey(message.id, draft.id);
+                                  const scopedProposal = getScopedActionProposal(
+                                    draftProposal,
+                                    draft,
+                                    draftsForMessage.length
+                                  );
+                                  return (
+                                    <div key={scopedDraftKey} className="space-y-1">
+                                      <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                                        Idea {draftIndex + 1}
                                       </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                draftProposal && draftValues && primaryDraft && primaryDraftKey && (
+                                      <AiProposalFormCard
+                                        proposal={scopedProposal}
+                                        onPropose={(values, proposal) =>
+                                          handleProposeFromDraft(
+                                            message.id,
+                                            scopedDraftKey,
+                                            proposal,
+                                            values
+                                          )
+                                        }
+                                        isSubmitting={executingActionKey === scopedDraftKey}
+                                        isCompleted={Boolean(completedActionKeys[scopedDraftKey])}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              draftProposal && draftValues && primaryDraft && primaryDraftKey && (
                                 <div className="mt-1 space-y-1.5">
                                   <input
                                     type="text"
@@ -1514,12 +1506,12 @@ export function AiAssistantPanel({
                                   </div>
                                 </div>
                               ))
-                              }
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                            }
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1584,38 +1576,38 @@ export function AiAssistantPanel({
               data-screen-scroll-root="true"
               className="hide-scrollbar min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto"
             >
-            {sortedProposals.map((proposal, index) => (
-              <ProposalCard
-                key={`${proposal.id}-${proposalFeedRefreshTick}`}
-                proposal={proposal}
-                index={index}
-                userId={userId}
-                compact={false}
-                displayGroupUsers={displayGroupUsers}
-                proposalFeedRefreshTick={proposalFeedRefreshTick}
-                proposalAvailabilities={getProposalAvailabilities(proposal.id)}
-                selectedAlternativeIds={selectedAlternativeIdsByProposal[proposal.id] || {}}
-                toggleAlternativeSelection={toggleAlternativeSelection}
-                proposalThumbnailUrl={proposalThumbnailUrls[proposal.id]}
-                thumbnailGenerating={Boolean(thumbnailGeneratingByProposalId[proposal.id])}
-                thumbnailError={thumbnailErrorByProposalId[proposal.id]}
-                handleGenerateProposalThumbnail={handleGenerateProposalThumbnail}
-                draft={proposalCardDrafts[proposal.id]}
-                setDraft={(updates) => updateProposalCardDraft(proposal.id, updates)}
-                handleSubmitAlternatives={handleSubmitAlternatives}
-                closeSuggestAlternativesModal={closeSuggestAlternativesModal}
-                openSuggestAlternativesModal={openSuggestAlternativesModal}
-                handleAffirmAvailabilityAsProposed={handleAffirmAvailabilityAsProposed}
-                openCalendarPopup={openCalendarPopup}
-                handleAddToCalendar={handleAddToCalendar}
-                commentDraft={commentDraftByProposalId[proposal.id] || ''}
-                setCommentDraft={(draft) =>
-                  setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: draft }))
-                }
-                handleAddProposalComment={handleAddProposalComment}
-                userNameById={userNameById}
-              />
-            ))}
+              {sortedProposals.map((proposal, index) => (
+                <ProposalCard
+                  key={`${proposal.id}-${proposalFeedRefreshTick}`}
+                  proposal={proposal}
+                  index={index}
+                  userId={userId}
+                  compact={false}
+                  displayGroupUsers={displayGroupUsers}
+                  proposalFeedRefreshTick={proposalFeedRefreshTick}
+                  proposalAvailabilities={getProposalAvailabilities(proposal.id)}
+                  selectedAlternativeIds={selectedAlternativeIdsByProposal[proposal.id] || {}}
+                  toggleAlternativeSelection={toggleAlternativeSelection}
+                  proposalThumbnailUrl={proposalThumbnailUrls[proposal.id]}
+                  thumbnailGenerating={Boolean(thumbnailGeneratingByProposalId[proposal.id])}
+                  thumbnailError={thumbnailErrorByProposalId[proposal.id]}
+                  handleGenerateProposalThumbnail={handleGenerateProposalThumbnail}
+                  draft={proposalCardDrafts[proposal.id]}
+                  setDraft={(updates) => updateProposalCardDraft(proposal.id, updates)}
+                  handleSubmitAlternatives={handleSubmitAlternatives}
+                  closeSuggestAlternativesModal={closeSuggestAlternativesModal}
+                  openSuggestAlternativesModal={openSuggestAlternativesModal}
+                  handleAffirmAvailabilityAsProposed={handleAffirmAvailabilityAsProposed}
+                  openCalendarPopup={openCalendarPopup}
+                  handleAddToCalendar={handleAddToCalendar}
+                  commentDraft={commentDraftByProposalId[proposal.id] || ''}
+                  setCommentDraft={(draft) =>
+                    setCommentDraftByProposalId((prev) => ({ ...prev, [proposal.id]: draft }))
+                  }
+                  handleAddProposalComment={handleAddProposalComment}
+                  userNameById={userNameById}
+                />
+              ))}
             </div>
           </div>
         )}
