@@ -1,2 +1,2 @@
 version: "2"
-authtoken: 2sBJBTAekPmPPzUvq8mznH9XW3G_3L1VumHNrbm4n1eAME5Ni
+authtoken: ${NGROK_AUTHTOKEN} # Use environment variable instead of committing the secret

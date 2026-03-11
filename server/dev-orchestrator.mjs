@@ -579,8 +579,32 @@ function escapeIcsText(value) {
 }
 
 function parseIsoDatesFromText(text) {
-  return Array.from(new Set(String(text || '').match(/\d{4}-\d{2}-\d{2}/g) || []));
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return [];
+
+  // Recognize range: "YYYY-MM-DD to YYYY-MM-DD"
+  const rangeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})$/i);
+  if (rangeMatch) {
+    const start = new Date(`${rangeMatch[1]}T00:00:00Z`);
+    const end = new Date(`${rangeMatch[2]}T00:00:00Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+    const out = [];
+    const cursor = new Date(start);
+    // Limit to 62 days to prevent excessive lists (matching frontend logic)
+    while (cursor <= end && out.length < 62) {
+      out.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return out;
+  }
+
+  // Fallback: extract all individual ISO dates
+  const dates = trimmed.match(/\d{4}-\d{2}-\d{2}/g);
+  if (!dates) return [];
+  // Return unique, ordered array
+  return Array.from(new Set(dates)).sort();
 }
+
 
 function parseTimeValue(value) {
   const match = String(value || '')
@@ -690,80 +714,78 @@ function requireEmailConfig() {
   return null;
 }
 
+function buildCustomHeaders(replyTo, idempotencyKey) {
+  const headers = [];
+  if (replyTo) {
+    headers.push({ header: 'Reply-To', value: replyTo });
+  }
+  if (idempotencyKey) {
+    headers.push({ header: 'X-Mtup-Idempotency-Key', value: idempotencyKey });
+  }
+  return headers.length > 0 ? { custom_headers: headers } : {};
+}
+
 async function sendEmail({ to, subject, html, text, attachments = [], idempotencyKey = '' }) {
   const configError = requireEmailConfig();
   if (configError) {
     throw new Error(configError);
   }
 
-  const response = await fetch('https://api.smtp2go.com/v3/email/send', {
-    method: 'POST',
-    headers: {
-      'X-Smtp2go-Api-Key': smtp2goApiKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      sender: notificationEmailFrom,
-      to,
-      subject,
-      html_body: html,
-      text_body: text,
-      ...(notificationEmailReplyTo
-        ? {
-            custom_headers: [
-              {
-                header: 'Reply-To',
-                value: notificationEmailReplyTo,
-              },
-              ...(idempotencyKey
-                ? [
-                    {
-                      header: 'X-Mtup-Idempotency-Key',
-                      value: idempotencyKey,
-                    },
-                  ]
-                : []),
-            ],
-          }
-        : idempotencyKey
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch('https://api.smtp2go.com/v3/email/send', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'X-Smtp2go-Api-Key': smtp2goApiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        sender: notificationEmailFrom,
+        to,
+        subject,
+        html_body: html,
+        text_body: text,
+        ...buildCustomHeaders(notificationEmailReplyTo, idempotencyKey),
+        ...(attachments.length > 0
           ? {
-              custom_headers: [
-                {
-                  header: 'X-Mtup-Idempotency-Key',
-                  value: idempotencyKey,
-                },
-              ],
+              attachments: attachments.map((attachment) => ({
+                filename: attachment.filename,
+                fileblob: attachment.content,
+                mimetype: attachment.contentType || 'application/octet-stream',
+              })),
             }
           : {}),
-      ...(attachments.length > 0
-        ? {
-            attachments: attachments.map((attachment) => ({
-              filename: attachment.filename,
-              fileblob: attachment.content,
-              mimetype: attachment.contentType || 'application/octet-stream',
-            })),
-          }
-        : {}),
-    }),
-  });
+      }),
+    });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Email send failed (${response.status}): ${body}`);
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Email send failed (${response.status}): ${body}`);
+    }
+
+    const payload = await response.json();
+    if (payload?.data?.failed > 0) {
+      const failureText = Array.isArray(payload?.data?.failures)
+        ? payload.data.failures
+            .map((failure) => failure?.error || failure?.email || JSON.stringify(failure))
+            .join('; ')
+        : 'unknown failure';
+      throw new Error(`SMTP2GO rejected part of the send: ${failureText}`);
+    }
+
+    return payload;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Email sending timed out after 10 seconds');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const payload = await response.json();
-  if (payload?.data?.failed > 0) {
-    const failureText = Array.isArray(payload?.data?.failures)
-      ? payload.data.failures
-          .map((failure) => failure?.error || failure?.email || JSON.stringify(failure))
-          .join('; ')
-      : 'unknown failure';
-    throw new Error(`SMTP2GO rejected part of the send: ${failureText}`);
-  }
-
-  return payload;
 }
 
 async function sendReminderEmails({ proposal, recipients, missingNames }) {

@@ -56,7 +56,7 @@ export function parseIsoDatesFromText(input: string): string[] {
     return out;
   }
   const dates = trimmed.match(/\d{4}-\d{2}-\d{2}/g);
-  return dates ? Array.from(new Set(dates)) : [];
+  return dates ? Array.from(new Set(dates)).sort() : [];
 }
 
 export function parseDateRangeFromText(input: string): ParsedDateRange {

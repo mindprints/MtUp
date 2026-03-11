@@ -965,6 +965,7 @@ export function AiAssistantPanel({
   const cardDeckMode = !compact;
   const showEmptyProposalBackground = sortedProposals.length === 0;
   const showBlankProposalFlowBackground = proposalFlow && messages.length === 0;
+  const showSnookyBackground = showEmptyProposalBackground || showBlankProposalFlowBackground;
   const displayGroupUsers =
     groupUsers.length > 0
       ? groupUsers
@@ -1107,11 +1108,13 @@ export function AiAssistantPanel({
     return (
       <div
         className={`flex h-full min-h-0 w-full min-w-0 flex-col gap-2 overflow-hidden rounded-xl ${
-          showEmptyProposalBackground ? 'bg-slate-900 bg-cover bg-center' : ''
+          showSnookyBackground ? 'bg-slate-900 bg-cover bg-center' : ''
         }`}
         style={
-          showEmptyProposalBackground
-            ? { backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.28), rgba(15,23,42,0.72)), url(${snookyBackgroundUrl})` }
+          showSnookyBackground
+            ? {
+                backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.28), rgba(15,23,42,0.72)), url(${snookyBackgroundUrl})`,
+              }
             : undefined
         }
       >
@@ -1119,7 +1122,7 @@ export function AiAssistantPanel({
           <form
             onSubmit={handleSubmit}
             className={`flex gap-2 rounded-lg p-2 ${
-              showEmptyProposalBackground
+              showSnookyBackground
                 ? 'bg-white/82 backdrop-blur-sm dark:bg-slate-900/78'
                 : 'bg-white dark:bg-slate-900'
             }`}
@@ -1150,20 +1153,12 @@ export function AiAssistantPanel({
             <div
               data-screen-scroll-root="true"
               className={`hide-scrollbar min-h-0 flex-1 overflow-y-auto rounded-lg border p-2 ${
-                showBlankProposalFlowBackground
-                  ? 'border-white/25 bg-white/20 backdrop-blur-[2px] dark:border-slate-700/60 dark:bg-slate-900/28'
-                  : showEmptyProposalBackground
+                showSnookyBackground
                   ? 'border-white/25 bg-white/20 backdrop-blur-[2px] dark:border-slate-700/60 dark:bg-slate-900/28'
                   : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
               }`}
               style={
-                showBlankProposalFlowBackground
-                  ? {
-                      backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                    }
-                  : showEmptyProposalBackground
+                showSnookyBackground
                   ? {
                       backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
                       backgroundSize: 'cover',
@@ -1557,9 +1552,7 @@ export function AiAssistantPanel({
             </div>
             <div
               className={`shrink-0 rounded-lg border p-2 ${
-                showBlankProposalFlowBackground
-                  ? 'border-white/25 bg-white/82 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/78'
-                  : showEmptyProposalBackground
+                showSnookyBackground
                   ? 'border-white/25 bg-white/82 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/78'
                   : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
               }`}
@@ -1614,11 +1607,11 @@ export function AiAssistantPanel({
               </div>
             </div>
           </div>
-        ) : sortedProposals.length === 0 ? (
+        ) : showSnookyBackground ? (
           <div
             className="flex flex-1 overflow-hidden rounded-[1.25rem] border border-white/25 bg-slate-900/40"
             style={{
-              backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.38), rgba(2,6,23,0.7)), url(${snookyBackgroundUrl})`,
+              backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
@@ -1675,32 +1668,34 @@ export function AiAssistantPanel({
   return (
     <div
       className={`w-full min-w-0 space-y-2 overflow-hidden rounded-xl ${
-        showEmptyProposalBackground ? 'bg-slate-900 bg-cover bg-center p-2' : ''
+        showSnookyBackground ? 'bg-slate-900 bg-cover bg-center p-2' : ''
       }`}
       style={
-        showEmptyProposalBackground
-          ? { backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.28), rgba(15,23,42,0.72)), url(${snookyBackgroundUrl})` }
+        showSnookyBackground
+          ? {
+              backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.28), rgba(15,23,42,0.72)), url(${snookyBackgroundUrl})`,
+            }
           : undefined
       }
     >
       {!compact && (
-        <p className={`text-xs ${showEmptyProposalBackground ? 'text-white/82' : 'text-gray-600 dark:text-slate-300'}`}>
+        <p className={`text-xs ${showSnookyBackground ? 'text-white/82' : 'text-gray-600 dark:text-slate-300'}`}>
           What&apos;s Up?
         </p>
       )}
 
       <div
         className={`rounded-lg ${
-          showEmptyProposalBackground
+          showSnookyBackground
             ? 'bg-white/16 p-0 backdrop-blur-[2px] dark:bg-slate-900/24'
             : 'bg-white p-1 dark:bg-slate-900'
         }`}
       >
-        {sortedProposals.length === 0 ? (
+        {showSnookyBackground && sortedProposals.length === 0 ? (
           <div
             className="min-h-[15rem] rounded-[1.25rem] border border-white/25 bg-slate-900/40"
             style={{
-              backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.38), rgba(2,6,23,0.7)), url(${snookyBackgroundUrl})`,
+              backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
@@ -1745,7 +1740,7 @@ export function AiAssistantPanel({
 
       <div
         className={`min-h-[18rem] rounded-lg border border-gray-200 p-3 space-y-2 dark:border-slate-700 ${
-          showEmptyProposalBackground
+          showSnookyBackground
             ? 'border-white/20 bg-white/16 backdrop-blur-[2px] dark:border-slate-700/60 dark:bg-slate-900/24'
             : 'bg-gray-50 dark:bg-slate-950'
         }`}
