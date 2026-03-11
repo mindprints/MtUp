@@ -201,45 +201,6 @@ export function PrimaryExperience() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      {activeTab !== 'propose' && (
-        <div className="shrink-0 rounded-lg bg-white p-2 dark:border dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-end gap-2">
-            {user.isAdmin && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('admin')}
-                className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${activeTab === 'admin'
-                    ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
-                  }`}
-              >
-                Admin
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setActiveTab('resolver')}
-              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${activeTab === 'resolver'
-                  ? 'border-blue-600 bg-blue-600 text-white'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
-                }`}
-            >
-              Resolver
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab(runtimeConfig.aiAssistantEnabled ? 'propose' : 'workspace')}
-              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${activeTab === 'activities' || activeTab === 'workspace'
-                  ? 'border-blue-600 bg-blue-600 text-white'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
-                }`}
-            >
-              Snooky
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="min-h-0 flex-1 overflow-hidden">
         <div
           ref={pagerRef}

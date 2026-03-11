@@ -58,6 +58,7 @@ To enable Snooky + local orchestrator in dev:
 - Set `VITE_ORCHESTRATOR_BASE_URL=http://localhost:8787`
 - Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`
 - Set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL`
+- Set `SMTP2GO_API_KEY` and `NOTIFICATION_EMAIL_FROM` if you want reminder / confirmation emails to send for real
 - Run `npm run ai:dev` in a second terminal (or use `npm run dev:restart:here`)
 
 To enable proposal thumbnail generation in Snooky:

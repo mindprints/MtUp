@@ -36,6 +36,13 @@ const supabaseAnonKey = String(
 const openRouterApiKey = String(process.env.OPENROUTER_API_KEY || '');
 const openRouterModel = String(process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini');
 const openRouterBaseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1');
+const smtp2goApiKey = String(process.env.SMTP2GO_API_KEY || '');
+const notificationEmailFrom = String(process.env.NOTIFICATION_EMAIL_FROM || '');
+const notificationEmailReplyTo = String(process.env.NOTIFICATION_EMAIL_REPLY_TO || '');
+const appBaseUrl = String(process.env.APP_BASE_URL || process.env.VITE_APP_BASE_URL || '').replace(
+  /\/$/,
+  ''
+);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
@@ -45,6 +52,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
 if (!openRouterApiKey) {
   console.warn(
     '[ai-orchestrator] OPENROUTER_API_KEY missing. Falling back to regex intent and static phrasing.'
+  );
+}
+if (!smtp2goApiKey) {
+  console.warn(
+    '[ai-orchestrator] SMTP2GO_API_KEY missing. Reminder/confirmation emails are disabled.'
+  );
+}
+if (!notificationEmailFrom) {
+  console.warn(
+    '[ai-orchestrator] NOTIFICATION_EMAIL_FROM missing. Reminder/confirmation emails are disabled.'
   );
 }
 
@@ -438,8 +455,40 @@ async function fetchActiveGroupMembers({ authToken, activeGroupId }) {
     .map((row) => ({
       id: row.user_id,
       name: row.display_name || row.user_id,
+      email: row.email || '',
+      role: row.role || 'member',
     }))
     .filter((member) => member.id);
+}
+
+async function updateProposalStatus({
+  authToken,
+  activeGroupId,
+  proposalId,
+  status,
+}) {
+  const query = new URLSearchParams({
+    id: `eq.${proposalId}`,
+  });
+  if (activeGroupId) {
+    query.append('group_id', `eq.${activeGroupId}`);
+  }
+  const response = await fetch(`${supabaseUrl}/rest/v1/proposals?${query.toString()}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to update proposal status (${response.status}): ${body}`);
+  }
+  const rows = await response.json();
+  return rows[0] || null;
 }
 
 async function fetchOpenProposals({ authToken, activeGroupId }) {
@@ -499,6 +548,287 @@ function formatPlanSummary(proposal) {
   return time ? `${date} at ${time}` : date;
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatIcsDatePart(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+function formatIcsDateTimePart(date) {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${formatIcsDatePart(date)}T${hh}${mm}00`;
+}
+
+function escapeIcsText(value) {
+  return String(value || '')
+    .replaceAll('\\', '\\\\')
+    .replaceAll(';', '\\;')
+    .replaceAll(',', '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function parseIsoDatesFromText(text) {
+  return Array.from(new Set(String(text || '').match(/\d{4}-\d{2}-\d{2}/g) || []));
+}
+
+function parseTimeValue(value) {
+  const match = String(value || '')
+    .trim()
+    .match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2] || '0');
+  const meridiem = match[3]?.toLowerCase() || '';
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  if (meridiem === 'pm' && hours < 12) hours += 12;
+  if (meridiem === 'am' && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return { hours, minutes };
+}
+
+function buildDateTimeFromParts(isoDate, timeValue) {
+  const parsed = parseTimeValue(timeValue);
+  if (!parsed) return null;
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setHours(parsed.hours, parsed.minutes, 0, 0);
+  return date;
+}
+
+function getProposalLocation(proposal) {
+  return String(proposal?.specifics_json?.location || '').trim();
+}
+
+function getProposalDescription(proposal, extraLines = []) {
+  const specifics = proposal.specifics_json || {};
+  return [
+    specifics.date ? `Date: ${specifics.date}` : '',
+    specifics.time ? `Time: ${specifics.time}` : '',
+    specifics.location ? `Location: ${specifics.location}` : '',
+    ...extraLines.filter(Boolean),
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildIcsAttachment(proposal, extraDescriptionLines = []) {
+  const specifics = proposal.specifics_json || {};
+  const parsedDates = parseIsoDatesFromText(specifics.date || '');
+  if (parsedDates.length === 0) return null;
+
+  const startIso = parsedDates[0];
+  const endIso = parsedDates[parsedDates.length - 1];
+  const startDate = new Date(`${startIso}T00:00:00`);
+  let dtStart = '';
+  let dtEnd = '';
+  let allDay = true;
+
+  const startTimeValue = specifics.startTime || specifics.time || '';
+  const endTimeValue = specifics.endTime || '';
+  const timedStart = buildDateTimeFromParts(startIso, startTimeValue);
+
+  if (timedStart) {
+    allDay = false;
+    const timedEnd =
+      buildDateTimeFromParts(startIso, endTimeValue) ||
+      new Date(timedStart.getTime() + 2 * 60 * 60 * 1000);
+    dtStart = formatIcsDateTimePart(timedStart);
+    dtEnd = formatIcsDateTimePart(timedEnd);
+  } else {
+    const exclusiveEnd = new Date(`${endIso}T00:00:00`);
+    exclusiveEnd.setDate(exclusiveEnd.getDate() + 1);
+    dtStart = formatIcsDatePart(startDate);
+    dtEnd = formatIcsDatePart(exclusiveEnd);
+  }
+
+  const description = getProposalDescription(proposal, extraDescriptionLines);
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//mtUp//Snooky//EN',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${proposal.id || randomUUID()}@mtup.local`,
+    `DTSTAMP:${formatIcsDateTimePart(new Date())}`,
+    allDay ? `DTSTART;VALUE=DATE:${dtStart}` : `DTSTART:${dtStart}`,
+    allDay ? `DTEND;VALUE=DATE:${dtEnd}` : `DTEND:${dtEnd}`,
+    `SUMMARY:${escapeIcsText(proposal.title || 'Confirmed activity')}`,
+    ...(getProposalLocation(proposal) ? [`LOCATION:${escapeIcsText(getProposalLocation(proposal))}`] : []),
+    ...(description ? [`DESCRIPTION:${escapeIcsText(description)}`] : []),
+    ...(appBaseUrl && proposal.id ? [`URL:${escapeIcsText(`${appBaseUrl}/?proposal=${proposal.id}`)}`] : []),
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+
+  const fileStem =
+    String(proposal.title || 'event')
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase() || 'event';
+
+  return {
+    filename: `${fileStem}.ics`,
+    content: Buffer.from(lines.join('\r\n'), 'utf8').toString('base64'),
+    contentType: 'text/calendar; charset=utf-8',
+  };
+}
+
+function requireEmailConfig() {
+  if (!smtp2goApiKey || !notificationEmailFrom) {
+    return 'Email sending is not configured on the server yet.';
+  }
+  return null;
+}
+
+async function sendEmail({ to, subject, html, text, attachments = [], idempotencyKey = '' }) {
+  const configError = requireEmailConfig();
+  if (configError) {
+    throw new Error(configError);
+  }
+
+  const response = await fetch('https://api.smtp2go.com/v3/email/send', {
+    method: 'POST',
+    headers: {
+      'X-Smtp2go-Api-Key': smtp2goApiKey,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: notificationEmailFrom,
+      to,
+      subject,
+      html_body: html,
+      text_body: text,
+      ...(notificationEmailReplyTo
+        ? {
+            custom_headers: [
+              {
+                header: 'Reply-To',
+                value: notificationEmailReplyTo,
+              },
+              ...(idempotencyKey
+                ? [
+                    {
+                      header: 'X-Mtup-Idempotency-Key',
+                      value: idempotencyKey,
+                    },
+                  ]
+                : []),
+            ],
+          }
+        : idempotencyKey
+          ? {
+              custom_headers: [
+                {
+                  header: 'X-Mtup-Idempotency-Key',
+                  value: idempotencyKey,
+                },
+              ],
+            }
+          : {}),
+      ...(attachments.length > 0
+        ? {
+            attachments: attachments.map((attachment) => ({
+              filename: attachment.filename,
+              fileblob: attachment.content,
+              mimetype: attachment.contentType || 'application/octet-stream',
+            })),
+          }
+        : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Email send failed (${response.status}): ${body}`);
+  }
+
+  const payload = await response.json();
+  if (payload?.data?.failed > 0) {
+    const failureText = Array.isArray(payload?.data?.failures)
+      ? payload.data.failures
+          .map((failure) => failure?.error || failure?.email || JSON.stringify(failure))
+          .join('; ')
+      : 'unknown failure';
+    throw new Error(`SMTP2GO rejected part of the send: ${failureText}`);
+  }
+
+  return payload;
+}
+
+async function sendReminderEmails({ proposal, recipients, missingNames }) {
+  const uniqueRecipients = Array.from(new Set(recipients.filter(Boolean)));
+  const planSummary = formatPlanSummary(proposal);
+  const subject = `Reminder: ${proposal.title} still needs your reply`;
+  const html = `
+    <p>Hi,</p>
+    <p>This is a reminder to reply to <strong>${escapeHtml(proposal.title)}</strong>.</p>
+    <p>The current plan is <strong>${escapeHtml(planSummary)}</strong>.</p>
+    <p>Still waiting on: ${escapeHtml(missingNames.join(', '))}</p>
+    <p>Please update your availability when you can.</p>
+  `;
+  const text = [
+    'Hi,',
+    '',
+    `This is a reminder to reply to ${proposal.title}.`,
+    `The current plan is ${planSummary}.`,
+    `Still waiting on: ${missingNames.join(', ')}`,
+    'Please update your availability when you can.',
+  ].join('\n');
+  return sendEmail({
+    to: uniqueRecipients,
+    subject,
+    html,
+    text,
+    idempotencyKey: `reminder:${proposal.id}:${uniqueRecipients.join(',')}`,
+  });
+}
+
+async function sendConfirmationEmails({ proposal, recipients, attendeeNames, missingNames }) {
+  const uniqueRecipients = Array.from(new Set(recipients.filter(Boolean)));
+  const planSummary = formatPlanSummary(proposal);
+  const icsAttachment = buildIcsAttachment(proposal, [
+    attendeeNames.length > 0 ? `Attendees: ${attendeeNames.join(', ')}` : '',
+    missingNames.length > 0 ? `Still pending: ${missingNames.join(', ')}` : '',
+  ]);
+  const subject = `Confirmed: ${proposal.title}`;
+  const html = `
+    <p>Hi,</p>
+    <p><strong>${escapeHtml(proposal.title)}</strong> is confirmed for <strong>${escapeHtml(planSummary)}</strong>.</p>
+    ${attendeeNames.length > 0 ? `<p>Confirmed attendees: ${escapeHtml(attendeeNames.join(', '))}</p>` : ''}
+    ${missingNames.length > 0 ? `<p>Still pending: ${escapeHtml(missingNames.join(', '))}</p>` : ''}
+    <p>The calendar invite is attached.</p>
+  `;
+  const text = [
+    'Hi,',
+    '',
+    `${proposal.title} is confirmed for ${planSummary}.`,
+    attendeeNames.length > 0 ? `Confirmed attendees: ${attendeeNames.join(', ')}` : '',
+    missingNames.length > 0 ? `Still pending: ${missingNames.join(', ')}` : '',
+    'The calendar invite is attached.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return sendEmail({
+    to: uniqueRecipients,
+    subject,
+    html,
+    text,
+    attachments: icsAttachment ? [icsAttachment] : [],
+    idempotencyKey: `confirmation:${proposal.id}:${uniqueRecipients.join(',')}`,
+  });
+}
+
 function buildCoordinationSnapshot({ proposals, availabilities, members }) {
   const memberNames = members.map((member) => member.name);
   const byProposalId = new Map();
@@ -517,11 +847,12 @@ function buildCoordinationSnapshot({ proposals, availabilities, members }) {
       .map((member) => member.name);
     const missing = memberNames.filter((name) => !attendees.includes(name));
     const totalMembers = Math.max(members.length, 1);
-    const readyThreshold = Math.max(2, Math.ceil(totalMembers * 0.6));
+    const readyThreshold = Math.max(2, Math.ceil(totalMembers * (totalMembers >= 7 ? 0.7 : 0.6)));
+    const allowedMissing = totalMembers >= 7 ? Math.max(1, Math.floor(totalMembers * 0.25)) : 1;
     const state =
       proposal.status === 'confirmed'
         ? 'confirmed'
-        : attendees.length >= readyThreshold && missing.length <= 1
+        : attendees.length >= readyThreshold && missing.length <= allowedMissing
           ? 'ready_to_confirm'
           : attendees.length >= Math.max(2, Math.ceil(totalMembers * 0.4))
             ? 'taking_shape'
@@ -531,6 +862,8 @@ function buildCoordinationSnapshot({ proposals, availabilities, members }) {
       attendees,
       missing,
       state,
+      allowedMissing,
+      readyThreshold,
       planSummary: formatPlanSummary(proposal),
     });
   });
@@ -1445,7 +1778,13 @@ async function generateNaturalLanguageAnswer({ userMessage, intent, rows }) {
   return 'Read-only mode is active. I can currently answer confirmed activities and your availability.';
 }
 
-function handleCoordinationIntent(intent, rawMessage, coordinationSnapshots, threadState) {
+async function handleCoordinationIntent(
+  intent,
+  rawMessage,
+  coordinationSnapshots,
+  threadState,
+  context = {}
+) {
   if (intent === 'list_ready_to_confirm') {
     return formatReadyToConfirmAnswer(coordinationSnapshots);
   }
@@ -1476,7 +1815,22 @@ function handleCoordinationIntent(intent, rawMessage, coordinationSnapshots, thr
       if (!target || target.missing.length === 0) {
         return `No reminder is needed for ${target?.proposal.title || 'that activity'}.`;
       } else {
-        return `Reminder emails are not wired yet. The people to remind for ${target.proposal.title} are ${target.missing.join(' and ')}.`;
+        const recipients = context.members
+          .filter((member) => target.missing.includes(member.name) && member.email)
+          .map((member) => member.email);
+        if (recipients.length === 0) {
+          return `I know who to remind for ${target.proposal.title}, but I do not have deliverable email addresses for ${target.missing.join(' and ')}.`;
+        }
+        try {
+          await sendReminderEmails({
+            proposal: target.proposal,
+            recipients,
+            missingNames: target.missing,
+          });
+          return `Done. I sent reminder emails for ${target.proposal.title} to ${target.missing.join(' and ')}.`;
+        } catch (error) {
+          return `I could not send the reminder emails for ${target.proposal.title}: ${String(error.message || error)}`;
+        }
       }
     }
   } else if (intent === 'offer_confirmation_email') {
@@ -1494,7 +1848,40 @@ function handleCoordinationIntent(intent, rawMessage, coordinationSnapshots, thr
       if (!target || target.state !== 'ready_to_confirm') {
         return `${target?.proposal.title || 'That activity'} is not ready to confirm yet.`;
       } else {
-        return `Confirmation emails with calendar invites are not wired yet. ${target.proposal.title} is the activity that looks ready to confirm.`;
+        const attendeeRecipients = context.members
+          .filter((member) => target.attendees.includes(member.name) && member.email)
+          .map((member) => member.email);
+        if (attendeeRecipients.length === 0) {
+          return `I can confirm ${target.proposal.title}, but I do not have deliverable email addresses for the confirmed attendees yet.`;
+        }
+        try {
+          await updateProposalStatus({
+            authToken: context.authToken,
+            activeGroupId: context.activeGroupId,
+            proposalId: target.proposal.id,
+            status: 'confirmed',
+          });
+          await sendConfirmationEmails({
+            proposal: {
+              ...target.proposal,
+              status: 'confirmed',
+            },
+            recipients: attendeeRecipients,
+            attendeeNames: target.attendees,
+            missingNames: target.missing,
+          });
+          threadState.lastConfirmedProposals = [
+            ...(threadState.lastConfirmedProposals || []).filter((entry) => entry.id !== target.proposal.id),
+            {
+              id: target.proposal.id,
+              title: target.proposal.title,
+              type: target.proposal.type,
+            },
+          ];
+          return `Done. I confirmed ${target.proposal.title} and sent confirmation emails with a calendar invite to ${target.attendees.join(' and ')}.`;
+        } catch (error) {
+          return `I could not finish confirming ${target.proposal.title}: ${String(error.message || error)}`;
+        }
       }
     }
   }
@@ -1638,7 +2025,17 @@ const server = http.createServer(async (req, res) => {
           const members = await fetchActiveGroupMembers({ authToken, activeGroupId });
           coordinationSnapshots = buildCoordinationSnapshot({ proposals, availabilities, members });
 
-          assistantText = handleCoordinationIntent(intent, rawMessage, coordinationSnapshots, threadState);
+          assistantText = await handleCoordinationIntent(
+            intent,
+            rawMessage,
+            coordinationSnapshots,
+            threadState,
+            {
+              authToken,
+              activeGroupId,
+              members,
+            }
+          );
         } else if (intent === 'propose_activity') {
           const preview = await buildActivityProposalPreview(rawMessage);
           assistantText = preview.assistantText;

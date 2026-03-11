@@ -10,7 +10,6 @@ import {
     ProposalCardDrafts,
     getProposalTimeSummary,
     proposalCardTheme,
-    ProposalFlag,
     userInitials,
     parseIsoDatesFromText,
     formatProposalBaseline,
@@ -54,6 +53,19 @@ export type ProposalCardProps = {
     userNameById: Map<string, string>;
 };
 
+const cardDateFormatter = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+});
+
+function formatCardOverlayDate(dateText: string): string {
+    const firstIsoDate = parseIsoDatesFromText(dateText)[0];
+    if (!firstIsoDate) return '';
+    const parsed = new Date(`${firstIsoDate}T12:00:00`);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return cardDateFormatter.format(parsed);
+}
+
 export function ProposalCard({
     proposal,
     index,
@@ -91,6 +103,8 @@ export function ProposalCard({
     const placeChanges = fieldChanges.filter((c) => c.field === 'place');
 
     const baselineDateText = proposal.specifics?.date || '';
+    const overlayDateText = formatCardOverlayDate(baselineDateText);
+    const overlayPlaceText = proposal.specifics?.location?.trim() || '';
     const originalCalendarDates = parseIsoDatesFromText(baselineDateText);
 
     const hasSavedAcceptance = (availability?: Availability) => {
@@ -194,8 +208,10 @@ export function ProposalCard({
             <div className="absolute inset-x-0 bottom-0 p-2.5">
                 <div className="flex items-end justify-between gap-3">
                     <div>
-                        <p className="text-base font-semibold text-white drop-shadow-sm">{proposal.title}</p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-white/85">
+                        <p className="text-xl font-semibold leading-tight text-white drop-shadow-sm sm:text-2xl">
+                            {proposal.title}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-white/92">
                             <span>by {proposalCreatorName}</span>
                             {isConfirmed && (
                                 <span className="rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
@@ -208,6 +224,11 @@ export function ProposalCard({
                                 </span>
                             )}
                         </div>
+                        {(overlayDateText || overlayPlaceText) && (
+                            <div className="mt-2 text-base font-semibold leading-tight text-white drop-shadow-sm sm:text-lg">
+                                {[overlayDateText, overlayPlaceText].filter(Boolean).join(' • ')}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -239,36 +260,6 @@ export function ProposalCard({
         </div>
     );
 
-    const statusFlags = (
-        <div className="flex flex-wrap gap-1.5">
-            {proposal.status === 'confirmed' && (
-                <ProposalFlag label="confirmed" tone="good" />
-            )}
-            {resolverMetadata?.variantLabel && (
-                <ProposalFlag label={resolverMetadata.variantLabel} tone="info" />
-            )}
-            <ProposalFlag label="proposer auto-in" tone="good" />
-            {dateChanges.length > 0 && (
-                <ProposalFlag
-                    label={`${dateChanges.length} date idea${dateChanges.length > 1 ? 's' : ''}`}
-                    tone="warm"
-                />
-            )}
-            {timeChanges.length > 0 && (
-                <ProposalFlag
-                    label={`${timeChanges.length} time idea${timeChanges.length > 1 ? 's' : ''}`}
-                    tone="info"
-                />
-            )}
-            {placeChanges.length > 0 && (
-                <ProposalFlag
-                    label={`${placeChanges.length} place idea${placeChanges.length > 1 ? 's' : ''}`}
-                    tone="info"
-                />
-            )}
-        </div>
-    );
-
     if (!compact) {
         return (
             <div
@@ -278,13 +269,9 @@ export function ProposalCard({
                 {imageHeader}
                 <div className="flex flex-1 flex-col p-2.5">
                     {subscribedAvatars}
-                    {statusFlags}
                     <div className={summaryPanelClass}>
                         <div className="grid grid-cols-1 gap-2">
                             <div className="space-y-1">
-                                <div>
-                                    <span className="font-semibold">Date:</span> {baselineDateText || 'Not set'}
-                                </div>
                                 {dateChanges.length > 0 && (
                                     <div className="space-y-1 pl-2">
                                         {dateChanges.map((change) => {
@@ -345,10 +332,6 @@ export function ProposalCard({
                                 )}
                             </div>
                             <div className="space-y-1">
-                                <div>
-                                    <span className="font-semibold">Place:</span>{' '}
-                                    {proposal.specifics?.location || 'Not set'}
-                                </div>
                                 {placeChanges.length > 0 && (
                                     <div className="space-y-1 pl-2">
                                         {placeChanges.map((change) => {
@@ -472,7 +455,6 @@ export function ProposalCard({
             {imageHeader}
             <div className="flex flex-1 flex-col p-2.5">
                 {subscribedAvatars}
-                {statusFlags}
 
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {shouldShowAffirmButton ? (
