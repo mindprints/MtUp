@@ -71,6 +71,32 @@ To enable proposal thumbnail generation in Snooky:
 Important:
 - Make sure `.env.local` uses `VITE_ORCHESTRATOR_BASE_URL=...` with no leading space before the key.
 
+## Deployable Orchestrator
+
+The orchestrator can now run as Vercel Node functions on the same deployment as the Vite app:
+
+- `POST /ai/chat` rewrites to `api/ai/chat.js`
+- `GET /health` rewrites to `api/health.js`
+- in deployed environments, if `VITE_ORCHESTRATOR_BASE_URL` is unset, the frontend defaults to the current site origin instead of `localhost`
+
+Recommended production setup:
+
+- host the app and orchestrator on the same domain
+- set `VITE_AI_ASSISTANT_ENABLED=true`
+- set server envs in the deployed runtime:
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `OPENROUTER_API_KEY`
+  - `OPENROUTER_MODEL`
+  - `SMTP2GO_API_KEY`
+  - `NOTIFICATION_EMAIL_FROM`
+  - `NOTIFICATION_EMAIL_REPLY_TO`
+  - `APP_BASE_URL`
+
+If you host the orchestrator on a separate domain, set `VITE_ORCHESTRATOR_BASE_URL` to that base URL explicitly.
+
+Concrete Vercel Hobby setup steps are in `docs/vercel-hobby-deploy.md`.
+
 ## Mock Users
 
 All users have the password: `password`
@@ -103,6 +129,7 @@ All users have the password: `password`
 
 ## Stage 2 Docs
 
+- `docs/handoff-2026-03-12.md`
 - `docs/activity-details-stage2.md`
 - `docs/icon-activity-translation.md`
 - `docs/handoff-2026-02-17.md`

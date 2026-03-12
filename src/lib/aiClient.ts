@@ -61,8 +61,12 @@ export async function sendAiMessage(request: AiChatRequest): Promise<AiChatRespo
           );
         }
         if (retryError instanceof TypeError) {
+          const isLocalDevOrchestrator =
+            runtimeConfig.orchestratorBaseUrl === 'http://localhost:8787';
           throw new Error(
-            `Failed to reach AI orchestrator at ${runtimeConfig.orchestratorBaseUrl}. Check that 'npm run ai:dev' is running.`
+            isLocalDevOrchestrator
+              ? `Failed to reach AI orchestrator at ${runtimeConfig.orchestratorBaseUrl}. Check that 'npm run ai:dev' is running.`
+              : `Failed to reach AI orchestrator at ${runtimeConfig.orchestratorBaseUrl}. Check the deployed orchestrator endpoint and its environment variables.`
           );
         }
         throw retryError;

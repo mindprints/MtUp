@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildProposalFlowEditDraft,
   formatSejourTimeText,
+  getProposalOverlayRubric,
   getProposalTimeSummary,
   normalizeTimeInputValue,
   parseSejourTimeText,
@@ -87,6 +88,47 @@ describe('getProposalTimeSummary', () => {
         },
       })
     ).toBe('08:00 -> 17:15');
+  });
+});
+
+describe('getProposalOverlayRubric', () => {
+  it('shows event date and time in the image rubric', () => {
+    expect(
+      getProposalOverlayRubric({
+        id: 'p4',
+        title: 'Dinner',
+        type: 'event',
+        emoji: '🍽️',
+        createdBy: 'u1',
+        authoredBy: 'u1',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        status: 'proposed',
+        specifics: {
+          date: '2026-06-05',
+          time: '18:00',
+        },
+      })
+    ).toBe('June 5 • 18:00');
+  });
+
+  it('shows sejour start and end dates in the image rubric', () => {
+    expect(
+      getProposalOverlayRubric({
+        id: 'p5',
+        title: 'Weekend Away',
+        type: 'sejour',
+        emoji: '🧳',
+        createdBy: 'u1',
+        authoredBy: 'u1',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        status: 'proposed',
+        specifics: {
+          date: '2026-06-05 to 2026-06-07',
+          startTime: '08:00',
+          endTime: '17:00',
+        },
+      })
+    ).toBe('June 5 - June 7');
   });
 });
 

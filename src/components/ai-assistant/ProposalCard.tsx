@@ -8,6 +8,7 @@ import { SuggestAlternativesModal } from '@/components/ai-assistant/SuggestAlter
 import { ProposalCommentsSection } from '@/components/ai-assistant/ProposalCommentsSection';
 import {
     ProposalCardDrafts,
+    getProposalOverlayRubric,
     getProposalTimeSummary,
     proposalCardTheme,
     userInitials,
@@ -21,7 +22,6 @@ export type ProposalCardProps = {
     userId: string;
     compact: boolean;
     displayGroupUsers: Array<Pick<User, 'id' | 'name' | 'isAdmin'>>;
-    proposalFeedRefreshTick: number;
     proposalAvailabilities: Availability[];
 
     selectedAlternativeIds: Record<string, boolean>;
@@ -53,26 +53,12 @@ export type ProposalCardProps = {
     userNameById: Map<string, string>;
 };
 
-const cardDateFormatter = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    day: 'numeric',
-});
-
-function formatCardOverlayDate(dateText: string): string {
-    const firstIsoDate = parseIsoDatesFromText(dateText)[0];
-    if (!firstIsoDate) return '';
-    const parsed = new Date(`${firstIsoDate}T12:00:00`);
-    if (Number.isNaN(parsed.getTime())) return '';
-    return cardDateFormatter.format(parsed);
-}
-
 export function ProposalCard({
     proposal,
     index,
     userId,
     compact,
     displayGroupUsers,
-    proposalFeedRefreshTick,
     proposalAvailabilities,
     selectedAlternativeIds,
     toggleAlternativeSelection,
@@ -103,7 +89,7 @@ export function ProposalCard({
     const placeChanges = fieldChanges.filter((c) => c.field === 'place');
 
     const baselineDateText = proposal.specifics?.date || '';
-    const overlayDateText = formatCardOverlayDate(baselineDateText);
+    const overlayRubricText = getProposalOverlayRubric(proposal);
     const overlayPlaceText = proposal.specifics?.location?.trim() || '';
     const originalCalendarDates = parseIsoDatesFromText(baselineDateText);
 
@@ -141,12 +127,8 @@ export function ProposalCard({
     const proposalAuthorId = proposal.authoredBy || proposal.createdBy;
     const proposalCreatorName = userNames.get(proposalAuthorId) || 'Unknown';
     const resolverMetadata = proposal.specifics?.resolver;
-
-    const requirementsNote =
-        proposal.specifics?.requirements ||
-        proposal.comments
-            ?.find((comment) => /requirement|require|need/i.test(comment.text))
-            ?.text?.trim() || 'No requirements listed.';
+    const notesCount = (proposal.comments?.length || 0) + (proposal.specifics?.requirements?.trim() ? 1 : 0);
+    const alternativesCount = fieldChanges.length;
 
     const alternativeCalendarDates = Array.from(
         new Set(
@@ -224,9 +206,9 @@ export function ProposalCard({
                                 </span>
                             )}
                         </div>
-                        {(overlayDateText || overlayPlaceText) && (
+                        {(overlayRubricText || overlayPlaceText) && (
                             <div className="mt-2 text-base font-semibold leading-tight text-white drop-shadow-sm sm:text-lg">
-                                {[overlayDateText, overlayPlaceText].filter(Boolean).join(' • ')}
+                                {[overlayRubricText, overlayPlaceText].filter(Boolean).join(' • ')}
                             </div>
                         )}
                     </div>
@@ -260,107 +242,100 @@ export function ProposalCard({
         </div>
     );
 
+    const alternativesPanel = (
+        <div className="space-y-1.5 rounded-xl border border-white/70 bg-white/80 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+            {dateChanges.map((change) => {
+                const optionId = `date-${change.id}`;
+                return (
+                    <label key={`date-${change.id}`} className="flex items-start gap-2 text-xs">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(selectedAlternativeIds?.[optionId])}
+                            onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                        />
+                        <span>
+                            <span className="font-medium">
+                                {userInitials(userNames.get(change.userId) || '?')}:
+                            </span>{' '}
+                            {typeof change.value.dateText === 'string'
+                                ? String(change.value.dateText)
+                                : typeof change.value.text === 'string'
+                                    ? String(change.value.text)
+                                    : 'unspecified'}
+                        </span>
+                    </label>
+                );
+            })}
+            {timeChanges.map((change) => {
+                const optionId = `time-${change.id}`;
+                return (
+                    <label key={`time-${change.id}`} className="flex items-start gap-2 text-xs">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(selectedAlternativeIds?.[optionId])}
+                            onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                        />
+                        <span>
+                            <span className="font-medium">
+                                {userInitials(userNames.get(change.userId) || '?')}:
+                            </span>{' '}
+                            {typeof change.value.text === 'string'
+                                ? String(change.value.text)
+                                : 'unspecified'}
+                        </span>
+                    </label>
+                );
+            })}
+            {placeChanges.map((change) => {
+                const optionId = `place-${change.id}`;
+                return (
+                    <label key={`place-${change.id}`} className="flex items-start gap-2 text-xs">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(selectedAlternativeIds?.[optionId])}
+                            onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
+                            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                        />
+                        <span>
+                            <span className="font-medium">
+                                {userInitials(userNames.get(change.userId) || '?')}:
+                            </span>{' '}
+                            {typeof change.value.text === 'string'
+                                ? String(change.value.text)
+                                : 'unspecified'}
+                        </span>
+                    </label>
+                );
+            })}
+        </div>
+    );
+
+    const alternativesTrigger = (
+        <button
+            type="button"
+            onClick={() => openSuggestAlternativesModal(proposal.id)}
+            className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-700 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+            Alternatives{alternativesCount > 0 ? ` ${alternativesCount}` : ''}
+        </button>
+    );
+
     if (!compact) {
         return (
             <div
-                key={`${proposal.id}-${proposalFeedRefreshTick}`}
                 className={`h-full min-h-full snap-start overflow-hidden rounded-[1rem] border-2 shadow ${cardShellClass} flex flex-col`}
             >
                 {imageHeader}
                 <div className="flex flex-1 flex-col p-2.5">
                     {subscribedAvatars}
                     <div className={summaryPanelClass}>
-                        <div className="grid grid-cols-1 gap-2">
-                            <div className="space-y-1">
-                                {dateChanges.length > 0 && (
-                                    <div className="space-y-1 pl-2">
-                                        {dateChanges.map((change) => {
-                                            const optionId = `date-${change.id}`;
-                                            return (
-                                                <label key={`date-${change.id}`} className="flex items-start gap-2 text-xs">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={Boolean(selectedAlternativeIds?.[optionId])}
-                                                        onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                                        className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                                    />
-                                                    <span>
-                                                        <span className="font-medium">
-                                                            {userInitials(userNames.get(change.userId) || '?')}:
-                                                        </span>{' '}
-                                                        {typeof change.value.dateText === 'string'
-                                                            ? String(change.value.dateText)
-                                                            : typeof change.value.text === 'string'
-                                                                ? String(change.value.text)
-                                                                : 'unspecified'}
-                                                    </span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                        <div className="space-y-1">
+                            <div>
+                                <span className="font-semibold">Time:</span>{' '}
+                                {getProposalTimeSummary(proposal) || 'Not set'}
                             </div>
-                            <div className="space-y-1">
-                                <div>
-                                    <span className="font-semibold">Time:</span>{' '}
-                                    {getProposalTimeSummary(proposal) || 'Not set'}
-                                </div>
-                                {timeChanges.length > 0 && (
-                                    <div className="space-y-1 pl-2">
-                                        {timeChanges.map((change) => {
-                                            const optionId = `time-${change.id}`;
-                                            return (
-                                                <label key={`time-${change.id}`} className="flex items-start gap-2 text-xs">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={Boolean(selectedAlternativeIds?.[optionId])}
-                                                        onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                                        className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                                    />
-                                                    <span>
-                                                        <span className="font-medium">
-                                                            {userInitials(userNames.get(change.userId) || '?')}:
-                                                        </span>{' '}
-                                                        {typeof change.value.text === 'string'
-                                                            ? String(change.value.text)
-                                                            : 'unspecified'}
-                                                    </span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="space-y-1">
-                                {placeChanges.length > 0 && (
-                                    <div className="space-y-1 pl-2">
-                                        {placeChanges.map((change) => {
-                                            const optionId = `place-${change.id}`;
-                                            return (
-                                                <label key={`place-${change.id}`} className="flex items-start gap-2 text-xs">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={Boolean(selectedAlternativeIds?.[optionId])}
-                                                        onChange={() => toggleAlternativeSelection(proposal.id, optionId)}
-                                                        className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                                                    />
-                                                    <span>
-                                                        <span className="font-medium">
-                                                            {userInitials(userNames.get(change.userId) || '?')}:
-                                                        </span>{' '}
-                                                        {typeof change.value.text === 'string'
-                                                            ? String(change.value.text)
-                                                            : 'unspecified'}
-                                                    </span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div>
-                            <span className="font-semibold">Requirements:</span> {requirementsNote}
                         </div>
                         {resolverMetadata?.variantOfProposalId && (
                             <div>
@@ -370,29 +345,32 @@ export function ProposalCard({
                                 {resolverMetadata.chosenPlaceLabel ? ` | Place: ${resolverMetadata.chosenPlaceLabel}` : ''}
                             </div>
                         )}
-                        <ProposalCommentsSection
-                            proposal={proposal}
-                            userNameById={userNameById}
-                            commentDraftByProposalId={{ [proposal.id]: commentDraft }}
-                            setCommentDraftByProposalId={(val) => {
-                                if (typeof val === 'function') {
-                                    const res = val({ [proposal.id]: commentDraft });
-                                    setCommentDraft(res[proposal.id] || '');
-                                } else {
-                                    setCommentDraft(val[proposal.id] || '');
-                                }
-                            }}
-                            handleAddProposalComment={handleAddProposalComment}
-                            theme="gray"
-                            containerClassName="mt-4"
-                        />
-                        {dateChanges.length === 0 &&
-                            timeChanges.length === 0 &&
-                            placeChanges.length === 0 && (
-                                <p className="text-xs leading-5 text-gray-600 dark:text-slate-300">
-                                    No alternatives suggested yet.
-                                </p>
-                            )}
+                        <div className="flex flex-wrap gap-1.5">
+                            <details className="group rounded-full">
+                                <summary className="cursor-pointer list-none rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                    Notes{notesCount > 0 ? ` ${notesCount}` : ''}
+                                </summary>
+                                <ProposalCommentsSection
+                                    proposal={proposal}
+                                    userNameById={userNameById}
+                                    commentDraftByProposalId={{ [proposal.id]: commentDraft }}
+                                    setCommentDraftByProposalId={(val) => {
+                                        if (typeof val === 'function') {
+                                            const res = val({ [proposal.id]: commentDraft });
+                                            setCommentDraft(res[proposal.id] || '');
+                                        } else {
+                                            setCommentDraft(val[proposal.id] || '');
+                                        }
+                                    }}
+                                    handleAddProposalComment={handleAddProposalComment}
+                                    theme="gray"
+                                    showTitle={false}
+                                    containerClassName="mt-2"
+                                />
+                            </details>
+                            {alternativesTrigger}
+                        </div>
+                        {alternativesCount > 0 && <div>{alternativesPanel}</div>}
                     </div>
 
                     {draft?.isSuggestModalOpen && (
@@ -432,13 +410,6 @@ export function ProposalCard({
                             >
                                 To My Calendar
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => openSuggestAlternativesModal(proposal.id)}
-                                className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                            >
-                                Suggest Alternatives
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -449,7 +420,6 @@ export function ProposalCard({
     // COMPACT MODE
     return (
         <div
-            key={`${proposal.id}-${proposalFeedRefreshTick}`}
             className={`snap-start overflow-hidden rounded-[1rem] border-2 shadow-sm ${cardShellClass} flex min-h-[70vh] flex-col`}
         >
             {imageHeader}
@@ -471,13 +441,7 @@ export function ProposalCard({
                         </span>
                     )}
 
-                    <button
-                        type="button"
-                        onClick={() => openSuggestAlternativesModal(proposal.id)}
-                        className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                        Suggest Alternatives
-                    </button>
+                    {alternativesTrigger}
                     <button
                         type="button"
                                     onClick={() => void handleGenerateProposalThumbnail(proposal)}
@@ -542,37 +506,30 @@ export function ProposalCard({
 
                     <details className="group rounded-full">
                         <summary className="cursor-pointer list-none rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                            Changes
+                            Notes{notesCount > 0 ? ` ${notesCount}` : ''}
                         </summary>
-                        <div className="mt-2 space-y-1.5 rounded-xl border border-white/70 bg-white/80 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                            {fieldChanges.length === 0 ? (
-                                <p className="text-xs text-gray-600 dark:text-slate-300">No alternatives yet.</p>
-                            ) : (
-                                fieldChanges
-                                    .slice()
-                                    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-                                    .map((change) => (
-                                        <div
-                                            key={change.id}
-                                            className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200"
-                                        >
-                                            <span className="font-medium">
-                                                {userNames.get(change.userId) || 'Someone'}
-                                            </span>{' '}
-                                            <span className="uppercase text-[10px] opacity-80">
-                                                {change.field || 'change'}
-                                            </span>{' '}
-                                            {typeof change.value.dateText === 'string'
-                                                ? String(change.value.dateText)
-                                                : typeof change.value.text === 'string'
-                                                    ? String(change.value.text)
-                                                    : 'unspecified'}
-                                        </div>
-                                    ))
-                            )}
-                        </div>
+                        <ProposalCommentsSection
+                            proposal={proposal}
+                            userNameById={userNameById}
+                            commentDraftByProposalId={{ [proposal.id]: commentDraft }}
+                            setCommentDraftByProposalId={(val) => {
+                                if (typeof val === 'function') {
+                                    const res = val({ [proposal.id]: commentDraft });
+                                    setCommentDraft(res[proposal.id] || '');
+                                } else {
+                                    setCommentDraft(val[proposal.id] || '');
+                                }
+                            }}
+                            handleAddProposalComment={handleAddProposalComment}
+                            theme="gray"
+                            showTitle={false}
+                            containerClassName="mt-2"
+                        />
                     </details>
+
                 </div>
+
+                {alternativesCount > 0 && <div className="mt-2">{alternativesPanel}</div>}
 
                 {draft?.isSuggestModalOpen && (
                     <SuggestAlternativesModal

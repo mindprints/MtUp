@@ -9,6 +9,7 @@ type ProposalCommentsSectionProps = {
     handleAddProposalComment: (proposal: Proposal) => Promise<void> | void;
     containerClassName?: string;
     theme?: 'indigo' | 'gray';
+    showTitle?: boolean;
 };
 
 export function ProposalCommentsSection({
@@ -19,8 +20,20 @@ export function ProposalCommentsSection({
     handleAddProposalComment,
     containerClassName,
     theme = 'indigo',
+    showTitle = true,
 }: ProposalCommentsSectionProps) {
     const isIndigo = theme === 'indigo';
+    const requirementsText = proposal.specifics?.requirements?.trim() || '';
+    const commentItems = [
+        ...(requirementsText
+            ? [{ id: `requirements-${proposal.id}`, label: 'Notes', text: requirementsText }]
+            : []),
+        ...((proposal.comments || []).map((comment) => ({
+            id: comment.id,
+            label: userNameById.get(comment.userId) || 'User',
+            text: comment.text,
+        })) || []),
+    ];
 
     const outerBorderClasses = isIndigo
         ? "border-indigo-200 bg-indigo-50/70 dark:border-indigo-900/40 dark:bg-indigo-950/20"
@@ -29,10 +42,6 @@ export function ProposalCommentsSection({
     const titleClasses = isIndigo
         ? "text-indigo-900 dark:text-indigo-200"
         : "text-gray-800 dark:text-slate-300";
-
-    const noCommentsClasses = isIndigo
-        ? "text-indigo-700 dark:text-indigo-300"
-        : "text-gray-600 dark:text-slate-400";
 
     const textareaClasses = isIndigo
         ? "border-indigo-300 dark:border-indigo-900/70"
@@ -44,20 +53,18 @@ export function ProposalCommentsSection({
 
     return (
         <div className={`space-y-1 rounded border p-2 text-[11px] ${outerBorderClasses} ${containerClassName || ''}`}>
-            <p className={`font-semibold ${titleClasses}`}>Notes</p>
-            {(proposal.comments || []).length > 0 ? (
+            {showTitle && <p className={`font-semibold ${titleClasses}`}>Notes</p>}
+            {commentItems.length > 0 && (
                 <div className="space-y-1">
-                    {(proposal.comments || []).map((comment) => (
+                    {commentItems.map((comment) => (
                         <div key={comment.id} className="rounded bg-white px-2 py-1 dark:bg-slate-900">
                             <span className="font-medium">
-                                {userNameById.get(comment.userId) || 'User'}:
+                                {comment.label}:
                             </span>{' '}
                             {comment.text}
                         </div>
                     ))}
                 </div>
-            ) : (
-                <p className={noCommentsClasses}>No notes yet.</p>
             )}
             <div className="flex items-start gap-1.5">
                 <textarea
@@ -68,8 +75,16 @@ export function ProposalCommentsSection({
                             [proposal.id]: e.target.value,
                         }))
                     }
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            const draft = (commentDraftByProposalId[proposal.id] || '').trim();
+                            if (!draft) return;
+                            e.preventDefault();
+                            void handleAddProposalComment(proposal);
+                        }
+                    }}
                     rows={2}
-                    placeholder="Add a note"
+                    placeholder="Write a note"
                     className={`min-h-[3.5rem] flex-1 rounded border bg-white px-2 py-1.5 text-xs text-gray-900 dark:bg-slate-900 dark:text-slate-100 ${textareaClasses}`}
                 />
                 <button

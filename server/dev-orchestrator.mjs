@@ -22,27 +22,33 @@ function loadEnvFile(relativePath) {
   }
 }
 
+function readEnvValue(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
 // Auto-load local env files for dev orchestrator runs.
 loadEnvFile('.env');
 loadEnvFile('.env.local');
 
-const port = Number(process.env.AI_ORCHESTRATOR_PORT || 8787);
-const supabaseUrl = String(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
-).replace(/\/$/, '');
-const supabaseAnonKey = String(
-  process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-);
-const openRouterApiKey = String(process.env.OPENROUTER_API_KEY || '');
-const openRouterModel = String(process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini');
-const openRouterBaseUrl = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1');
-const smtp2goApiKey = String(process.env.SMTP2GO_API_KEY || '');
-const notificationEmailFrom = String(process.env.NOTIFICATION_EMAIL_FROM || '');
-const notificationEmailReplyTo = String(process.env.NOTIFICATION_EMAIL_REPLY_TO || '');
-const appBaseUrl = String(process.env.APP_BASE_URL || process.env.VITE_APP_BASE_URL || '').replace(
-  /\/$/,
-  ''
-);
+const port = Number(readEnvValue('AI_ORCHESTRATOR_PORT') || 8787);
+const supabaseUrl = readEnvValue('SUPABASE_URL', 'VITE_SUPABASE_URL').replace(/\/$/, '');
+const supabaseAnonKey = readEnvValue('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY');
+const openRouterApiKey = readEnvValue('OPENROUTER_API_KEY');
+const openRouterModel = readEnvValue('OPENROUTER_MODEL') || 'openai/gpt-4o-mini';
+const openRouterBaseUrl =
+  readEnvValue('OPENROUTER_BASE_URL') || 'https://openrouter.ai/api/v1';
+const smtp2goApiKey = readEnvValue('SMTP2GO_API_KEY');
+const notificationEmailFrom = readEnvValue('NOTIFICATION_EMAIL_FROM');
+const notificationEmailReplyTo = readEnvValue('NOTIFICATION_EMAIL_REPLY_TO');
+const appBaseUrl = readEnvValue('APP_BASE_URL', 'VITE_APP_BASE_URL').replace(/\/$/, '');
+const isDirectRun =
+  process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
@@ -130,13 +136,16 @@ function isAffirmative(message) {
 function shouldProposeActivity(message) {
   const hasPlanningVerb = /\b(propose|plan|suggest|organize)\b/.test(message);
   const hasActivityNoun =
-    /\b(activity|event|night out|night on the town|outing|dinner|drinks)\b/.test(message);
-  return hasPlanningVerb && hasActivityNoun;
+    /\b(activity|event|night out|night on the town|outing|dinner|drinks|trip|travel|vacation|holiday|weekend getaway|getaway|sejour)\b/.test(
+      message
+    );
+  const hasDestinationPhrase = /\btrip to\b|\btravel to\b|\bgetaway to\b/.test(message);
+  return hasPlanningVerb && (hasActivityNoun || hasDestinationPhrase);
 }
 
 function looksLikeProposalRefinement(message) {
   return Boolean(
-    /\b(when|date|time|place|location|where|requirement|requirements|invite|invitees|everyone|all|friday|saturday|sunday|monday|tuesday|wednesday|thursday|tomorrow|tonight|next week)\b/.test(
+    /\b(when|date|time|place|location|where|requirement|requirements|invite|invitees|everyone|all|friday|saturday|sunday|monday|tuesday|wednesday|thursday|tomorrow|tonight|next week|weekend|january|february|march|april|may|june|july|august|september|october|november|december|trip|travel|vacation|holiday|getaway)\b/.test(
       message
     ) || /\d{4}-\d{2}-\d{2}/.test(message) || /\b\d{1,2}(:\d{2})?\s*(am|pm)\b/i.test(message)
   );
@@ -167,7 +176,7 @@ async function callOpenRouter(messages, options = {}) {
   return String(payload?.choices?.[0]?.message?.content || '').trim();
 }
 
-async function classifyIntent(message, options = {}) {
+export async function classifyIntent(message, options = {}) {
   const proposalMode = Boolean(options.proposalMode);
   const previousIntent = options.previousIntent || null;
 
@@ -792,12 +801,17 @@ async function sendReminderEmails({ proposal, recipients, missingNames }) {
   const uniqueRecipients = Array.from(new Set(recipients.filter(Boolean)));
   const planSummary = formatPlanSummary(proposal);
   const subject = `Reminder: ${proposal.title} still needs your reply`;
+  const activityUrl = appBaseUrl ? `${appBaseUrl}/?proposal=${proposal.id}` : appBaseUrl;
+  const siteCallToAction = activityUrl
+    ? `<p>Please update your availability in <a href="${escapeHtml(activityUrl)}">MtUp</a>.</p>`
+    : '<p>Please update your availability in MtUp.</p>';
   const html = `
     <p>Hi,</p>
     <p>This is a reminder to reply to <strong>${escapeHtml(proposal.title)}</strong>.</p>
     <p>The current plan is <strong>${escapeHtml(planSummary)}</strong>.</p>
     <p>Still waiting on: ${escapeHtml(missingNames.join(', '))}</p>
-    <p>Please update your availability when you can.</p>
+    ${siteCallToAction}
+    <p>This mailbox is not monitored for scheduling changes.</p>
   `;
   const text = [
     'Hi,',
@@ -805,7 +819,8 @@ async function sendReminderEmails({ proposal, recipients, missingNames }) {
     `This is a reminder to reply to ${proposal.title}.`,
     `The current plan is ${planSummary}.`,
     `Still waiting on: ${missingNames.join(', ')}`,
-    'Please update your availability when you can.',
+    activityUrl ? `Please update your availability in MtUp: ${activityUrl}` : 'Please update your availability in MtUp.',
+    'This mailbox is not monitored for scheduling changes.',
   ].join('\n');
   return sendEmail({
     to: uniqueRecipients,
@@ -819,6 +834,7 @@ async function sendReminderEmails({ proposal, recipients, missingNames }) {
 async function sendConfirmationEmails({ proposal, recipients, attendeeNames, missingNames }) {
   const uniqueRecipients = Array.from(new Set(recipients.filter(Boolean)));
   const planSummary = formatPlanSummary(proposal);
+  const activityUrl = appBaseUrl ? `${appBaseUrl}/?proposal=${proposal.id}` : appBaseUrl;
   const icsAttachment = buildIcsAttachment(proposal, [
     attendeeNames.length > 0 ? `Attendees: ${attendeeNames.join(', ')}` : '',
     missingNames.length > 0 ? `Still pending: ${missingNames.join(', ')}` : '',
@@ -829,7 +845,9 @@ async function sendConfirmationEmails({ proposal, recipients, attendeeNames, mis
     <p><strong>${escapeHtml(proposal.title)}</strong> is confirmed for <strong>${escapeHtml(planSummary)}</strong>.</p>
     ${attendeeNames.length > 0 ? `<p>Confirmed attendees: ${escapeHtml(attendeeNames.join(', '))}</p>` : ''}
     ${missingNames.length > 0 ? `<p>Still pending: ${escapeHtml(missingNames.join(', '))}</p>` : ''}
+    ${activityUrl ? `<p>View the plan in <a href="${escapeHtml(activityUrl)}">MtUp</a>.</p>` : ''}
     <p>The calendar invite is attached.</p>
+    <p>This mailbox is not monitored for scheduling changes.</p>
   `;
   const text = [
     'Hi,',
@@ -837,7 +855,9 @@ async function sendConfirmationEmails({ proposal, recipients, attendeeNames, mis
     `${proposal.title} is confirmed for ${planSummary}.`,
     attendeeNames.length > 0 ? `Confirmed attendees: ${attendeeNames.join(', ')}` : '',
     missingNames.length > 0 ? `Still pending: ${missingNames.join(', ')}` : '',
+    activityUrl ? `View the plan in MtUp: ${activityUrl}` : '',
     'The calendar invite is attached.',
+    'This mailbox is not monitored for scheduling changes.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -1909,7 +1929,7 @@ async function handleCoordinationIntent(
   }
 }
 
-const server = http.createServer(async (req, res) => {
+export async function handleNodeRequest(req, res) {
   if (!globalThis.__mtupAiThreadState) {
     globalThis.__mtupAiThreadState = new Map();
   }
@@ -2104,11 +2124,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   sendJson(res, 404, { error: 'Not found' });
-});
+}
 
-server.listen(port, () => {
-  console.info(`[ai-orchestrator] listening on http://localhost:${port}`);
-  console.info(
-    `[ai-orchestrator] openrouter: ${openRouterApiKey ? 'enabled' : 'disabled'} (${openRouterModel})`
-  );
-});
+if (isDirectRun) {
+  const server = http.createServer(handleNodeRequest);
+  server.listen(port, () => {
+    console.info(`[ai-orchestrator] listening on http://localhost:${port}`);
+    console.info(
+      `[ai-orchestrator] openrouter: ${openRouterApiKey ? 'enabled' : 'disabled'} (${openRouterModel})`
+    );
+  });
+}

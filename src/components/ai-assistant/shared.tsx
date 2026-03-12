@@ -267,6 +267,36 @@ export function formatProposalBaseline(proposal: Proposal): string {
   return parts.length > 0 ? parts.join(' | ') : 'No logistics set yet';
 }
 
+const overlayDateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  day: 'numeric',
+});
+
+function formatOverlayDateLabel(isoDate: string): string {
+  const parsed = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return overlayDateFormatter.format(parsed);
+}
+
+export function getProposalOverlayRubric(proposal: Proposal): string {
+  const dates = parseIsoDatesFromText(proposal.specifics?.date || '');
+  const startDate = dates[0] || '';
+  const endDate = dates[dates.length - 1] || '';
+
+  if (proposal.type === 'sejour') {
+    const startLabel = startDate ? formatOverlayDateLabel(startDate) : '';
+    const endLabel = endDate ? formatOverlayDateLabel(endDate) : '';
+    if (startLabel && endLabel) {
+      return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+    }
+    return startLabel || endLabel;
+  }
+
+  const dateLabel = startDate ? formatOverlayDateLabel(startDate) : '';
+  const timeLabel = getProposalTimeSummary(proposal);
+  return [dateLabel, timeLabel].filter(Boolean).join(' • ');
+}
+
 export function getProposalStartTime(proposal: Proposal): string {
   if (proposal.type === 'sejour') {
     return normalizeTimeInputValue(proposal.specifics?.startTime || proposal.specifics?.time || '');

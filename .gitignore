@@ -8,3 +8,4 @@ dist/
 .idea/
 .env.example
 .codex-ngrok.yml
+.vercel

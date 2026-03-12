@@ -316,7 +316,6 @@ export function AiAssistantPanel({
 
   const [memorySeedStatus, setMemorySeedStatus] = useState<string | null>(null);
   const [proposalCardDrafts, setProposalCardDrafts] = useState<ProposalCardDrafts>({});
-  const [proposalFeedRefreshTick, setProposalFeedRefreshTick] = useState(0);
   const [proposalThumbnailUrls, setProposalThumbnailUrls] = useState<Record<string, string>>({});
   const [thumbnailGeneratingByProposalId, setThumbnailGeneratingByProposalId] = useState<
     Record<string, boolean>
@@ -338,7 +337,6 @@ export function AiAssistantPanel({
 
   useEffect(() => {
     proposalThreadStore.ensureImplicitAffirmationsForProposals(proposals);
-    setProposalFeedRefreshTick((tick) => tick + 1);
   }, [proposals]);
 
   useEffect(() => {
@@ -484,7 +482,6 @@ export function AiAssistantPanel({
       if (nextAvailability) {
         setAvailability(nextAvailability);
       }
-      setProposalFeedRefreshTick((tick) => tick + 1);
       if (canGenerateProposalThumbnail()) {
         void handleGenerateProposalThumbnail(createdProposal);
       }
@@ -620,7 +617,6 @@ export function AiAssistantPanel({
       };
       setAvailability(nextAvailability);
     }
-    setProposalFeedRefreshTick((tick) => tick + 1);
   };
 
   const openSuggestAlternativesModal = (proposalId: string) => {
@@ -753,7 +749,6 @@ export function AiAssistantPanel({
         isSuggestModalOpen: false,
       },
     }));
-    setProposalFeedRefreshTick((tick) => tick + 1);
   };
 
   const handleGenerateProposalThumbnail = async (proposal: Proposal) => {
@@ -1624,13 +1619,12 @@ export function AiAssistantPanel({
             >
               {sortedProposals.map((proposal, index) => (
                 <ProposalCard
-                  key={`${proposal.id}-${proposalFeedRefreshTick}`}
+                  key={proposal.id}
                   proposal={proposal}
                   index={index}
                   userId={userId}
                   compact={false}
                   displayGroupUsers={displayGroupUsers}
-                  proposalFeedRefreshTick={proposalFeedRefreshTick}
                   proposalAvailabilities={getProposalAvailabilities(proposal.id)}
                   selectedAlternativeIds={selectedAlternativeIdsByProposal[proposal.id] || {}}
                   toggleAlternativeSelection={toggleAlternativeSelection}
@@ -1704,13 +1698,12 @@ export function AiAssistantPanel({
           <div className="snap-y snap-mandatory space-y-2 pr-0.5">
             {sortedProposals.map((proposal, index) => (
               <ProposalCard
-                key={`${proposal.id}-${proposalFeedRefreshTick}`}
+                key={proposal.id}
                 proposal={proposal}
                 index={index}
                 userId={userId}
                 compact
                 displayGroupUsers={displayGroupUsers}
-                proposalFeedRefreshTick={proposalFeedRefreshTick}
                 proposalAvailabilities={getProposalAvailabilities(proposal.id)}
                 selectedAlternativeIds={selectedAlternativeIdsByProposal[proposal.id] || {}}
                 toggleAlternativeSelection={toggleAlternativeSelection}
