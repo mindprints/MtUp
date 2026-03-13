@@ -6,7 +6,7 @@
 - Orchestrator: Vercel Node functions
 - Data/auth: Supabase
 - Outbound email: SMTP2GO
-- Domain: `mtup.xyz`
+- Domain: `<your-domain>`
 
 ## Runtime Endpoints
 
@@ -48,8 +48,8 @@
 - `SMTP2GO_API_KEY=<smtp2go key>`
 - `NOTIFICATION_EMAIL_FROM=<noreply or controlled mailbox>`
 - `NOTIFICATION_EMAIL_REPLY_TO=<controlled mailbox>`
-- `APP_BASE_URL=<your-domain>`
-  - The actual deployment or preview domain used for generating links in emails.
+- `APP_BASE_URL=https://<your-domain>`
+  - The production URL (including protocol) used for generating links in emails.
 
 ## Reply Policy
 
@@ -60,7 +60,7 @@
 
 ## Supabase Checklist
 
-- `mtup.xyz` and the Vercel preview domain must be added to allowed origins if required by your auth setup.
+- `<your-domain>` and the Vercel preview domain must be added to allowed origins if required by your auth setup.
 - Production users and memberships must exist in the production project.
 - SQL migrations in `docs/supabase/` must already be applied to the production database.
 
@@ -82,4 +82,4 @@
 - AI proposal drafting works.
 - Reminder email flow works from the deployed orchestrator.
 - Confirmation email flow attaches the `.ics` file and links back to the site.
-- Phone layout and swipe navigation still behave correctly on `mtup.xyz`.
+- Phone layout and swipe navigation still behave correctly on `<your-domain>`.
