@@ -1,3 +1,4 @@
+import React from 'react';
 import type { Proposal, User, Availability } from '@/types';
 import { proposalThreadStore } from '@/lib/proposalThreadStore';
 import {
@@ -52,6 +53,21 @@ export type ProposalCardProps = {
 
     userNameById: Map<string, string>;
 };
+
+function createProposalCommentDraftAdapter(
+    proposalId: string,
+    commentDraft: string,
+    setCommentDraft: (val: string) => void
+) {
+    return (val: React.SetStateAction<Record<string, string>>) => {
+        if (typeof val === 'function') {
+            const res = val({ [proposalId]: commentDraft });
+            setCommentDraft(res[proposalId] || '');
+        } else {
+            setCommentDraft(val[proposalId] || '');
+        }
+    };
+}
 
 export function ProposalCard({
     proposal,
@@ -354,14 +370,11 @@ export function ProposalCard({
                                     proposal={proposal}
                                     userNameById={userNameById}
                                     commentDraftByProposalId={{ [proposal.id]: commentDraft }}
-                                    setCommentDraftByProposalId={(val) => {
-                                        if (typeof val === 'function') {
-                                            const res = val({ [proposal.id]: commentDraft });
-                                            setCommentDraft(res[proposal.id] || '');
-                                        } else {
-                                            setCommentDraft(val[proposal.id] || '');
-                                        }
-                                    }}
+                                    setCommentDraftByProposalId={createProposalCommentDraftAdapter(
+                                        proposal.id,
+                                        commentDraft,
+                                        setCommentDraft
+                                    )}
                                     handleAddProposalComment={handleAddProposalComment}
                                     theme="gray"
                                     showTitle={false}
@@ -512,14 +525,11 @@ export function ProposalCard({
                             proposal={proposal}
                             userNameById={userNameById}
                             commentDraftByProposalId={{ [proposal.id]: commentDraft }}
-                            setCommentDraftByProposalId={(val) => {
-                                if (typeof val === 'function') {
-                                    const res = val({ [proposal.id]: commentDraft });
-                                    setCommentDraft(res[proposal.id] || '');
-                                } else {
-                                    setCommentDraft(val[proposal.id] || '');
-                                }
-                            }}
+                            setCommentDraftByProposalId={createProposalCommentDraftAdapter(
+                                proposal.id,
+                                commentDraft,
+                                setCommentDraft
+                            )}
                             handleAddProposalComment={handleAddProposalComment}
                             theme="gray"
                             showTitle={false}

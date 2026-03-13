@@ -47,6 +47,16 @@ type AiAssistantPanelProps = {
   onProposalFlowGoActivities?: () => void;
 };
 
+function SnookyOverlayNote() {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-[calc(15%+80px)] z-10 flex justify-end px-5 sm:px-6">
+      <p className="max-w-[13rem] rotate-[22deg] text-right text-[2rem] leading-[0.94] text-stone-50 [font-family:'Segoe_Print','Bradley_Hand','Comic_Sans_MS',cursive] [text-shadow:0_4px_18px_rgba(15,23,42,0.78)] sm:text-[2.35rem]">
+        Snooky&apos;s got you covered.
+      </p>
+    </div>
+  );
+}
+
 const EXPECTED_GROUP_MEMBER_NAMES = ['Alice', 'Bob', 'Charlie', 'Denise', 'Eve'] as const;
 
 type ProposalFlowAlternativeDraft = {
@@ -1102,7 +1112,7 @@ export function AiAssistantPanel({
   if (cardDeckMode) {
     return (
       <div
-        className={`flex h-full min-h-0 w-full min-w-0 flex-col gap-2 overflow-hidden rounded-xl ${
+        className={`relative flex h-full min-h-0 w-full min-w-0 flex-col gap-2 overflow-hidden rounded-xl ${
           showSnookyBackground ? 'bg-slate-900 bg-cover bg-center' : ''
         }`}
         style={
@@ -1113,10 +1123,11 @@ export function AiAssistantPanel({
             : undefined
         }
       >
+        {showSnookyBackground && <SnookyOverlayNote />}
         {showInlineChatbox && (
           <form
             onSubmit={handleSubmit}
-            className={`flex gap-2 rounded-lg p-2 ${
+            className={`rounded-lg p-2 ${
               showSnookyBackground
                 ? 'bg-white/82 backdrop-blur-sm dark:bg-slate-900/78'
                 : 'bg-white dark:bg-slate-900'
@@ -1129,13 +1140,6 @@ export function AiAssistantPanel({
               placeholder="Ask Snooky..."
               className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             />
-            <button
-              type="submit"
-              disabled={isLoading || input.trim().length === 0}
-              className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isLoading ? 'Asking...' : 'Ask'}
-            </button>
           </form>
         )}
         {error && (
@@ -1149,18 +1153,11 @@ export function AiAssistantPanel({
               data-screen-scroll-root="true"
               className={`hide-scrollbar min-h-0 flex-1 overflow-y-auto rounded-lg border p-2 ${
                 showSnookyBackground
-                  ? 'border-white/25 bg-white/20 backdrop-blur-[2px] dark:border-slate-700/60 dark:bg-slate-900/28'
+                  ? showBlankProposalFlowBackground
+                    ? 'border-white/25 bg-transparent dark:border-slate-700/60'
+                    : 'border-white/25 bg-white/20 backdrop-blur-[2px] dark:border-slate-700/60 dark:bg-slate-900/28'
                   : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
               }`}
-              style={
-                showSnookyBackground
-                  ? {
-                      backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                    }
-                  : undefined
-              }
             >
               {messages.length > 0 && (
                 <div className="space-y-2">
@@ -1548,7 +1545,9 @@ export function AiAssistantPanel({
             <div
               className={`shrink-0 rounded-lg border p-2 ${
                 showSnookyBackground
-                  ? 'border-white/25 bg-white/82 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/78'
+                  ? showBlankProposalFlowBackground
+                    ? 'border-white/25 bg-transparent dark:border-slate-700/60'
+                    : 'border-white/25 bg-white/82 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/78'
                   : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
               }`}
             >
@@ -1605,11 +1604,6 @@ export function AiAssistantPanel({
         ) : showSnookyBackground ? (
           <div
             className="flex flex-1 overflow-hidden rounded-[1.25rem] border border-white/25 bg-slate-900/40"
-            style={{
-              backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1661,7 +1655,7 @@ export function AiAssistantPanel({
 
   return (
     <div
-      className={`w-full min-w-0 space-y-2 overflow-hidden rounded-xl ${
+      className={`relative w-full min-w-0 space-y-2 overflow-hidden rounded-xl ${
         showSnookyBackground ? 'bg-slate-900 bg-cover bg-center p-2' : ''
       }`}
       style={
@@ -1671,7 +1665,8 @@ export function AiAssistantPanel({
             }
           : undefined
       }
-    >
+      >
+      {showSnookyBackground && <SnookyOverlayNote />}
       {!compact && (
         <p className={`text-xs ${showSnookyBackground ? 'text-white/82' : 'text-gray-600 dark:text-slate-300'}`}>
           What&apos;s Up?
@@ -1688,11 +1683,6 @@ export function AiAssistantPanel({
         {showSnookyBackground && sortedProposals.length === 0 ? (
           <div
             className="min-h-[15rem] rounded-[1.25rem] border border-white/25 bg-slate-900/40"
-            style={{
-              backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.44), rgba(2,6,23,0.68)), url(${snookyBackgroundUrl})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
           />
         ) : (
           <div className="snap-y snap-mandatory space-y-2 pr-0.5">

@@ -28,11 +28,11 @@ export function ProposalCommentsSection({
         ...(requirementsText
             ? [{ id: `requirements-${proposal.id}`, label: 'Notes', text: requirementsText }]
             : []),
-        ...((proposal.comments || []).map((comment) => ({
+        ...(proposal.comments || []).map((comment) => ({
             id: comment.id,
             label: userNameById.get(comment.userId) || 'User',
             text: comment.text,
-        })) || []),
+        })),
     ];
 
     const outerBorderClasses = isIndigo

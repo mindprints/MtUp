@@ -4,12 +4,12 @@ import { AiAssistantPanel } from './AiAssistantPanel';
 import { ProposeScreen } from './ProposeScreen';
 import { ResolverScreen } from './ResolverScreen';
 import { AdminDashboard } from './AdminDashboard';
+import { SettingsScreen } from './SettingsScreen';
 import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
 import { runtimeConfig } from '@/lib/runtimeConfig';
 
-type ExperienceTab = 'activities' | 'propose' | 'resolver' | 'admin' | 'workspace';
-const EXPERIENCE_TAB_STORAGE_KEY = 'mtup-primary-tab';
+type ExperienceTab = 'activities' | 'settings' | 'propose' | 'resolver' | 'admin' | 'workspace';
 
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
@@ -39,18 +39,6 @@ function findActiveVerticalScrollTarget(
 }
 
 function readInitialTab(aiEnabled: boolean): ExperienceTab {
-  const stored = localStorage.getItem(EXPERIENCE_TAB_STORAGE_KEY);
-  if (stored === 'assistant') {
-    return aiEnabled ? 'activities' : 'workspace';
-  }
-  if (stored === 'workspace') {
-    return aiEnabled ? 'activities' : 'workspace';
-  }
-  if (stored === 'activities' || stored === 'propose' || stored === 'resolver' || stored === 'admin') {
-    if (stored === 'activities' && !aiEnabled) return 'workspace';
-    if (stored === 'propose' && !aiEnabled) return 'workspace';
-    return stored;
-  }
   return aiEnabled ? 'activities' : 'workspace';
 }
 
@@ -66,18 +54,14 @@ export function PrimaryExperience() {
   const availableTabs = useMemo<ExperienceTab[]>(() => {
     if (runtimeConfig.aiAssistantEnabled) {
       return user?.isAdmin
-        ? ['activities', 'propose', 'resolver', 'admin']
-        : ['activities', 'propose', 'resolver'];
+        ? ['settings', 'activities', 'propose', 'resolver', 'admin']
+        : ['settings', 'activities', 'propose', 'resolver'];
     }
 
-    return user?.isAdmin ? ['workspace', 'resolver', 'admin'] : ['workspace', 'resolver'];
+    return user?.isAdmin ? ['settings', 'workspace', 'resolver', 'admin'] : ['settings', 'workspace', 'resolver'];
   }, [user?.isAdmin]);
 
   if (!user) return null;
-
-  useEffect(() => {
-    localStorage.setItem(EXPERIENCE_TAB_STORAGE_KEY, activeTab);
-  }, [activeTab]);
 
   useEffect(() => {
     if (!availableTabs.includes(activeTab)) {
@@ -177,6 +161,8 @@ export function PrimaryExperience() {
     />
   );
 
+  const settingsScreen = <SettingsScreen />;
+
   const resolverScreen = (
     <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white p-2 dark:border dark:border-slate-800 dark:bg-slate-900">
       <ResolverScreen />
@@ -193,6 +179,7 @@ export function PrimaryExperience() {
 
   const renderScreen = (tab: ExperienceTab) => {
     if (tab === 'activities') return activitiesScreen;
+    if (tab === 'settings') return settingsScreen;
     if (tab === 'propose') return proposeScreen;
     if (tab === 'resolver') return resolverScreen;
     if (tab === 'admin') return adminScreen;

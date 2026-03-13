@@ -1,76 +1,12 @@
-import { useAuth } from '@/lib/AuthContext';
-import { useTheme } from '@/lib/ThemeContext';
-
 type DashboardProps = {
   children: React.ReactNode;
 };
 
 export function Dashboard({ children }: DashboardProps) {
-  const { user, logout } = useAuth();
-  const { isDarkMode, toggleTheme } = useTheme();
   const containerWidthClass = 'w-full lg:max-w-[430px]';
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50 dark:bg-slate-950">
-      <header className="bg-white shadow-sm dark:bg-slate-900 dark:shadow-none dark:border-b dark:border-slate-800">
-        <div className={`${containerWidthClass} mx-auto px-3 py-3 transition-all`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">
-                Snookey&apos;s Here to Help.
-              </h1>
-              <p className="text-xs text-gray-600 mt-0.5 dark:text-slate-300">
-                Welcome, {user?.name || ''}
-                {user?.isAdmin && ' (Admin)'}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <details className="relative">
-                <summary className="list-none cursor-pointer px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700">
-                  Instructions
-                </summary>
-                <div className="absolute right-0 mt-2 w-80 z-20 rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700 shadow-lg dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200">
-                  <p>
-                    Create with + Event or + Sejour, then select a proposal and click or drag dates to mark availability.
-                  </p>
-                  <p className="mt-2">
-                    On an activity lane: click to mark, Ctrl/Cmd+click to remove, and click again (once marked) to open details.
-                  </p>
-                  <p className="mt-2">
-                    Filters: use Display All, My Proposals, My Choices, or Selected to control what appears on the calendar.
-                  </p>
-                  <p className="mt-2">
-                    Navigation: use the Left and Right Arrow keys to snap between the phone screens.
-                  </p>
-                  <p className="mt-2">
-                    Sejour tip: in Time, use <strong>Generate Overlap Windows</strong> to create candidate ranges from shared availability.
-                  </p>
-                </div>
-              </details>
-              <label className="inline-flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600">
-                <span>{isDarkMode ? 'Dark' : 'Light'}</span>
-                <span className="relative inline-flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={isDarkMode}
-                    onChange={toggleTheme}
-                    className="sr-only peer"
-                    aria-label="Toggle dark mode"
-                  />
-                  <span className="h-5 w-9 rounded-full bg-gray-300 dark:bg-slate-600 peer-checked:bg-blue-600 transition-colors" />
-                  <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white peer-checked:translate-x-4 transition-transform" />
-                </span>
-              </label>
-              <button
-                onClick={logout}
-                className="px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
-              >
-                Sign out
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
       <main className={`${containerWidthClass} mx-auto min-h-0 flex-1 px-0 py-0 transition-all lg:px-2 lg:py-2`}>
         <div
           className="h-full overflow-hidden bg-white dark:bg-slate-900 lg:mx-auto lg:max-h-[845px] lg:aspect-[9/19.5] lg:rounded-[2rem] lg:border lg:border-gray-900 lg:p-1 lg:shadow-2xl dark:lg:border-slate-700 dark:lg:bg-slate-900"

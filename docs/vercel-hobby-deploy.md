@@ -48,7 +48,8 @@
 - `SMTP2GO_API_KEY=<smtp2go key>`
 - `NOTIFICATION_EMAIL_FROM=<noreply or controlled mailbox>`
 - `NOTIFICATION_EMAIL_REPLY_TO=<controlled mailbox>`
-- `APP_BASE_URL=https://mtup.xyz`
+- `APP_BASE_URL=<your-domain>`
+  - The actual deployment or preview domain used for generating links in emails.
 
 ## Reply Policy
 

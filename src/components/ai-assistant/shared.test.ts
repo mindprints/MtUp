@@ -130,6 +130,85 @@ describe('getProposalOverlayRubric', () => {
       })
     ).toBe('June 5 - June 7');
   });
+
+  it('returns an empty string/fallback for empty or invalid specifics.date', () => {
+    expect(
+      getProposalOverlayRubric({
+        id: 'p6',
+        title: 'Dinner',
+        type: 'event',
+        emoji: '🍽️',
+        createdBy: 'u1',
+        status: 'proposed',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        specifics: { date: '' },
+      })
+    ).toBe('');
+
+    expect(
+      getProposalOverlayRubric({
+        id: 'p7',
+        title: 'Dinner',
+        type: 'event',
+        emoji: '🍽️',
+        createdBy: 'u1',
+        status: 'proposed',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        specifics: { date: 'invalid-date' },
+      })
+    ).toBe('');
+  });
+
+  it('collapses identical sejour start and end dates to a single label', () => {
+    expect(
+      getProposalOverlayRubric({
+        id: 'p8',
+        title: 'One Day Sejour',
+        type: 'sejour',
+        emoji: '🧳',
+        createdBy: 'u1',
+        status: 'proposed',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        specifics: {
+          date: '2026-06-05 to 2026-06-05',
+        },
+      })
+    ).toBe('June 5');
+  });
+
+  it('returns only time for events/sejours with time but no date', () => {
+    expect(
+      getProposalOverlayRubric({
+        id: 'p9',
+        title: 'Daily Sync',
+        type: 'event',
+        emoji: '📅',
+        createdBy: 'u1',
+        status: 'proposed',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        specifics: {
+          time: '18:00',
+        },
+      })
+    ).toBe('18:00');
+
+    // For sejours, current behavior returns empty string if no dates
+    expect(
+      getProposalOverlayRubric({
+        id: 'p10',
+        title: 'Time Only Sejour',
+        type: 'sejour',
+        emoji: '🧳',
+        createdBy: 'u1',
+        status: 'proposed',
+        createdAt: '2026-03-07T12:00:00.000Z',
+        specifics: {
+          startTime: '08:00',
+          endTime: '17:00',
+        },
+      })
+    ).toBe('');
+  });
 });
 
 describe('sejour alternative time helpers', () => {
