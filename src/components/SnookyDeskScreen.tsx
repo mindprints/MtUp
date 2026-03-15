@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import snookyAtDeskUrl from '../../Snooky_at_desk.webp';
+import snookyAtDeskUrl from '@/assets/Snooky_at_desk.webp';
 import { generateId } from '@/lib/utils';
 
 type BriefingMessage = {
@@ -21,6 +21,7 @@ function SnookyDeskOverlayNote() {
 export function SnookyDeskScreen() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<BriefingMessage[]>([]);
+  const hasAssistantReply = messages.some((message) => message.role === 'assistant');
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -51,14 +52,14 @@ export function SnookyDeskScreen() {
           backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.28), rgba(15,23,42,0.72)), url(${snookyAtDeskUrl})`,
         }}
       >
-        <SnookyDeskOverlayNote />
+        {!hasAssistantReply && <SnookyDeskOverlayNote />}
         <form onSubmit={handleSubmit} className="bg-transparent p-2">
           <input
             type="text"
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder="Tell me..."
-            className="w-full rounded-full border border-white/45 bg-white/88 px-4 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none"
+            className="w-full rounded-full border border-white/35 bg-[oklch(36.7%_0.016_35.7)] px-4 py-2 text-sm text-white placeholder:text-white/70 focus:outline-none"
           />
         </form>
         <div className="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-2">

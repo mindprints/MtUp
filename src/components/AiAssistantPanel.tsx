@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import snookyBackgroundUrl from '../../Snooky_5.webp';
+import snookyBackgroundUrl from '@/assets/Snooky_5.webp';
 import { sendAiMessage } from '@/lib/aiClient';
 import { memoryStore } from '@/lib/memoryStore';
 import { buildStockholmSeedMemoryRecords } from '@/lib/memorySeeds';

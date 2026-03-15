@@ -19,7 +19,7 @@ export function AiActionCard({
   const [isChecked, setIsChecked] = useState(false);
 
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+    <div className="rounded-md border border-beige-400 bg-beige-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-grey-950/30 dark:text-amber-100">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] font-semibold uppercase tracking-wide">Action Proposal</div>
         {proposal.requiresApproval && (
