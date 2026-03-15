@@ -44,7 +44,6 @@ type AiAssistantPanelProps = {
   compact?: boolean;
   showInlineChatbox?: boolean;
   proposalFlow?: boolean;
-  onProposalFlowGoActivities?: () => void;
 };
 
 function SnookyOverlayNote() {
@@ -73,6 +72,16 @@ type PendingAlternativeSuggestion = {
   dateText: string;
   timeText: string;
   placeText: string;
+};
+
+type ProposalFlowPromptField = 'time' | 'place' | 'comments';
+
+type ProposalFlowReviewState = {
+  changeDecision?: 'yes' | 'no';
+  promptedMissingFields: ProposalFlowPromptField[];
+  activeMissingField: ProposalFlowPromptField | null;
+  editingField: ProposalFlowPromptField | null;
+  requiresFinalConfirmation: boolean;
 };
 
 const EMPTY_PROPOSAL_FLOW_ALTERNATIVE_DRAFT: ProposalFlowAlternativeDraft = {
@@ -164,6 +173,90 @@ function formatIcsDatePart(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}${month}${day}`;
+}
+
+function formatFriendlyDateLabel(isoDate: string): string {
+  const date = new Date(`${isoDate}T12:00:00`);
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatFriendlyDatePhrase(datesText: string): string {
+  const { startDate, endDate } = parseDateRangeFromText(datesText || '');
+  if (!startDate) return '';
+  if (endDate && endDate !== startDate) {
+    const start = new Date(`${startDate}T12:00:00`);
+    const end = new Date(`${endDate}T12:00:00`);
+    const sameMonth =
+      start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+    const startLabel = new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+    }).format(start);
+    const endLabel = new Intl.DateTimeFormat('en-US', {
+      ...(sameMonth ? {} : { month: 'long' }),
+      day: 'numeric',
+    }).format(end);
+    return ` from ${startLabel} to ${endLabel}`;
+  }
+  return ` on ${formatFriendlyDateLabel(startDate)}`;
+}
+
+function formatInviteesLabel(inviteesText: string): string {
+  const normalized = inviteesText.trim();
+  if (!normalized || /everyone in active group/i.test(normalized) || /^everyone$/i.test(normalized)) {
+    return 'everyone';
+  }
+  return normalized;
+}
+
+function formatProposalFlowSummary(values: AiProposalFormValues): string {
+  const invitees = formatInviteesLabel(values.invitees);
+  const title = values.title.trim() || 'something together';
+  const place = values.place.trim();
+  const notes = values.comments.trim();
+  const timeText =
+    values.startTime.trim() || values.endTime.trim()
+      ? formatSejourTimeText(values.startTime.trim(), values.endTime.trim()).trim()
+      : values.times.trim();
+  const datePhrase = formatFriendlyDatePhrase(values.dates.trim());
+  const placePhrase = place ? ` at ${place}` : '';
+  const timePhrase = timeText ? ` at ${timeText}` : '';
+  const notesPhrase = notes ? ` ${notes}` : '';
+  return `You're inviting ${invitees} to ${title}${placePhrase}${datePhrase}${timePhrase}.${notesPhrase}`;
+}
+
+function getMissingProposalFlowFields(
+  draft: AiProposalDraft,
+  values: AiProposalFormValues
+): ProposalFlowPromptField[] {
+  const missing: ProposalFlowPromptField[] = [];
+  const hasTime =
+    draft.type === 'sejour'
+      ? Boolean(values.startTime.trim() || values.endTime.trim())
+      : Boolean(values.times.trim());
+  if (!hasTime) missing.push('time');
+  if (!values.place.trim()) missing.push('place');
+  if (!values.comments.trim()) missing.push('comments');
+  return missing;
+}
+
+function getProposalFlowPromptLabel(field: ProposalFlowPromptField): string {
+  if (field === 'time') return 'time';
+  if (field === 'place') return 'place';
+  return 'notes';
+}
+
+function createEmptyProposalFlowReviewState(): ProposalFlowReviewState {
+  return {
+    promptedMissingFields: [],
+    activeMissingField: null,
+    editingField: null,
+    requiresFinalConfirmation: false,
+  };
 }
 
 function formatIcsDateTimePart(date: Date): string {
@@ -286,7 +379,6 @@ export function AiAssistantPanel({
   compact = false,
   showInlineChatbox = false,
   proposalFlow = false,
-  onProposalFlowGoActivities,
 }: AiAssistantPanelProps) {
   const {
     addProposal,
@@ -340,6 +432,9 @@ export function AiAssistantPanel({
   const [pendingAlternativeSuggestionsByDraftKey, setPendingAlternativeSuggestionsByDraftKey] =
     useState<Record<string, PendingAlternativeSuggestion[]>>({});
   const [commentDraftByProposalId, setCommentDraftByProposalId] = useState<Record<string, string>>({});
+  const [proposalFlowReviewStateByDraftKey, setProposalFlowReviewStateByDraftKey] = useState<
+    Record<string, ProposalFlowReviewState>
+  >({});
 
   useEffect(() => {
     setRecentMemories(memoryStore.listForUser(userId, activeGroupId).slice(0, 4));
@@ -515,6 +610,11 @@ export function AiAssistantPanel({
         return next;
       });
       setPendingAlternativeSuggestionsByDraftKey((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+      setProposalFlowReviewStateByDraftKey((prev) => {
         const next = { ...prev };
         delete next[draftKey];
         return next;
@@ -1070,6 +1170,10 @@ export function AiAssistantPanel({
     key: keyof AiProposalFormValues,
     value: string
   ) => {
+    setProposalFlowReviewState(draftKey, (current) => ({
+      ...current,
+      requiresFinalConfirmation: true,
+    }));
     setProposalFlowDraftValuesByDraftKey((prev) => ({
       ...prev,
       [draftKey]: {
@@ -1080,6 +1184,126 @@ export function AiAssistantPanel({
             : value,
       },
     }));
+  };
+
+  const getProposalFlowReviewState = (draftKey: string): ProposalFlowReviewState =>
+    proposalFlowReviewStateByDraftKey[draftKey] || createEmptyProposalFlowReviewState();
+
+  const setProposalFlowReviewState = (
+    draftKey: string,
+    updater: (current: ProposalFlowReviewState) => ProposalFlowReviewState
+  ) => {
+    setProposalFlowReviewStateByDraftKey((prev) => ({
+      ...prev,
+      [draftKey]: updater(prev[draftKey] || createEmptyProposalFlowReviewState()),
+    }));
+  };
+
+  const getNextMissingProposalFlowField = (
+    draft: AiProposalDraft,
+    values: AiProposalFormValues,
+    promptedFields: ProposalFlowPromptField[]
+  ): ProposalFlowPromptField | null => {
+    const missingFields = getMissingProposalFlowFields(draft, values);
+    return missingFields.find((field) => !promptedFields.includes(field)) || null;
+  };
+
+  const handleProposalFlowChangeDecision = (
+    draftKey: string,
+    draft: AiProposalDraft,
+    values: AiProposalFormValues,
+    decision: 'yes' | 'no'
+  ) => {
+    if (decision === 'yes') {
+      setProposalFlowReviewState(draftKey, (current) => ({
+        ...current,
+        changeDecision: 'yes',
+        activeMissingField: null,
+        editingField: null,
+        requiresFinalConfirmation: false,
+      }));
+      return;
+    }
+
+    setProposalFlowReviewState(draftKey, (current) => ({
+      ...current,
+      changeDecision: 'no',
+      activeMissingField: getNextMissingProposalFlowField(draft, values, current.promptedMissingFields),
+      editingField: null,
+      requiresFinalConfirmation: false,
+    }));
+  };
+
+  const handleProposalFlowMissingFieldResponse = (
+    draftKey: string,
+    draft: AiProposalDraft,
+    values: AiProposalFormValues,
+    field: ProposalFlowPromptField,
+    wantsToAdd: boolean
+  ) => {
+    if (wantsToAdd) {
+      setProposalFlowReviewState(draftKey, (current) => ({
+        ...current,
+        activeMissingField: field,
+        editingField: field,
+        requiresFinalConfirmation: false,
+      }));
+      return;
+    }
+
+    setProposalFlowReviewState(draftKey, (current) => {
+      const promptedMissingFields = current.promptedMissingFields.includes(field)
+        ? current.promptedMissingFields
+        : [...current.promptedMissingFields, field];
+      return {
+        ...current,
+        promptedMissingFields,
+        activeMissingField: getNextMissingProposalFlowField(draft, values, promptedMissingFields),
+        editingField: null,
+        requiresFinalConfirmation: false,
+      };
+    });
+  };
+
+  const handleProposalFlowMissingFieldSaved = (
+    draftKey: string,
+    draft: AiProposalDraft,
+    values: AiProposalFormValues,
+    field: ProposalFlowPromptField
+  ) => {
+    setProposalFlowReviewState(draftKey, (current) => {
+      const promptedMissingFields = current.promptedMissingFields.includes(field)
+        ? current.promptedMissingFields
+        : [...current.promptedMissingFields, field];
+      return {
+        ...current,
+        promptedMissingFields,
+        activeMissingField: getNextMissingProposalFlowField(draft, values, promptedMissingFields),
+        editingField: null,
+        requiresFinalConfirmation: false,
+      };
+    });
+  };
+
+  const handleProposalFlowConfirm = (
+    messageId: string,
+    draftKey: string,
+    proposal: AiActionProposal,
+    values: AiProposalFormValues
+  ) => {
+    const reviewState = getProposalFlowReviewState(draftKey);
+    if (reviewState.requiresFinalConfirmation) {
+      setProposalFlowReviewState(draftKey, (current) => ({
+        ...current,
+        changeDecision: undefined,
+        activeMissingField: null,
+        editingField: null,
+        requiresFinalConfirmation: false,
+      }));
+      return;
+    }
+
+    void handleProposeFromDraft(messageId, draftKey, proposal, values);
   };
 
   const latestProposalFlowActionMessage = [...messages]
@@ -1127,10 +1351,10 @@ export function AiAssistantPanel({
         {showInlineChatbox && (
           <form
             onSubmit={handleSubmit}
-            className={`rounded-lg p-2 ${
+            className={`${
               showSnookyBackground
-                ? 'bg-white/82 backdrop-blur-sm dark:bg-slate-900/78'
-                : 'bg-white dark:bg-slate-900'
+                ? 'bg-transparent'
+                : 'rounded-lg p-2 bg-white dark:bg-slate-900'
             }`}
           >
             <input
@@ -1138,7 +1362,11 @@ export function AiAssistantPanel({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask Snooky..."
-              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              className={`flex-1 rounded-full border px-4 py-2 text-sm ${
+                showSnookyBackground
+                  ? 'border-white/45 bg-white/88 text-slate-900 placeholder:text-slate-500'
+                  : 'border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
+              }`}
             />
           </form>
         )}
@@ -1159,7 +1387,331 @@ export function AiAssistantPanel({
                   : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'
               }`}
             >
-              {messages.length > 0 && (
+              {latestProposalFlowActionProposal &&
+              latestProposalFlowDraftValues &&
+              latestProposalFlowPrimaryDraft &&
+              latestProposalFlowPrimaryDraftKey &&
+              latestProposalFlowDrafts.length === 1 ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/35 bg-white/88 p-4 text-slate-900 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/84 dark:text-slate-50">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-300">
+                      Snooky
+                    </p>
+                    <p className="mt-2 text-xl font-semibold leading-tight sm:text-2xl">
+                      {formatProposalFlowSummary(latestProposalFlowDraftValues)}
+                    </p>
+                  </div>
+                  {(() => {
+                    const reviewState = getProposalFlowReviewState(latestProposalFlowPrimaryDraftKey);
+                    const missingField = reviewState.activeMissingField;
+                    const isSejourDraft = latestProposalFlowPrimaryDraft.type === 'sejour';
+
+                    return (
+                      <div className="rounded-2xl border border-white/35 bg-white/82 p-4 text-slate-900 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/78 dark:text-slate-50">
+                        {reviewState.changeDecision === undefined && (
+                          <div className="space-y-3">
+                            <p className="text-base font-medium">Do you want to change or add details?</p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleProposalFlowChangeDecision(
+                                    latestProposalFlowPrimaryDraftKey,
+                                    latestProposalFlowPrimaryDraft,
+                                    latestProposalFlowDraftValues,
+                                    'yes'
+                                  )
+                                }
+                                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                              >
+                                Yes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleProposalFlowChangeDecision(
+                                    latestProposalFlowPrimaryDraftKey,
+                                    latestProposalFlowPrimaryDraft,
+                                    latestProposalFlowDraftValues,
+                                    'no'
+                                  )
+                                }
+                                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                No
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {reviewState.changeDecision === 'yes' && (
+                          <div className="space-y-3">
+                            <p className="text-base font-medium">Update the details you want Snooky to use.</p>
+                            <input
+                              type="text"
+                              value={latestProposalFlowDraftValues.title}
+                              onChange={(e) =>
+                                updateProposalFlowDraftField(
+                                  latestProposalFlowPrimaryDraftKey,
+                                  latestProposalFlowPrimaryDraft,
+                                  'title',
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Activity"
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                            <textarea
+                              value={latestProposalFlowDraftValues.invitees}
+                              onChange={(e) =>
+                                updateProposalFlowDraftField(
+                                  latestProposalFlowPrimaryDraftKey,
+                                  latestProposalFlowPrimaryDraft,
+                                  'invitees',
+                                  e.target.value
+                                )
+                              }
+                              rows={2}
+                              placeholder="Who is invited?"
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                            <input
+                              type="text"
+                              value={latestProposalFlowDraftValues.dates}
+                              onChange={(e) =>
+                                updateProposalFlowDraftField(
+                                  latestProposalFlowPrimaryDraftKey,
+                                  latestProposalFlowPrimaryDraft,
+                                  'dates',
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Dates"
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                            {isSejourDraft ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  value={latestProposalFlowDraftValues.startTime}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      latestProposalFlowPrimaryDraftKey,
+                                      latestProposalFlowPrimaryDraft,
+                                      'startTime',
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Start time"
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                />
+                                <input
+                                  type="text"
+                                  value={latestProposalFlowDraftValues.endTime}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      latestProposalFlowPrimaryDraftKey,
+                                      latestProposalFlowPrimaryDraft,
+                                      'endTime',
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="End time"
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                />
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={latestProposalFlowDraftValues.times}
+                                onChange={(e) =>
+                                  updateProposalFlowDraftField(
+                                    latestProposalFlowPrimaryDraftKey,
+                                    latestProposalFlowPrimaryDraft,
+                                    'times',
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="Time"
+                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                              />
+                            )}
+                            <input
+                              type="text"
+                              value={latestProposalFlowDraftValues.place}
+                              onChange={(e) =>
+                                updateProposalFlowDraftField(
+                                  latestProposalFlowPrimaryDraftKey,
+                                  latestProposalFlowPrimaryDraft,
+                                  'place',
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Place"
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                            <textarea
+                              value={latestProposalFlowDraftValues.comments}
+                              onChange={(e) =>
+                                updateProposalFlowDraftField(
+                                  latestProposalFlowPrimaryDraftKey,
+                                  latestProposalFlowPrimaryDraft,
+                                  'comments',
+                                  e.target.value
+                                )
+                              }
+                              rows={3}
+                              placeholder="Notes"
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                          </div>
+                        )}
+                        {reviewState.changeDecision === 'no' && missingField && reviewState.editingField === null && (
+                          <div className="space-y-3">
+                            <p className="text-base font-medium">
+                              Do you want to add {getProposalFlowPromptLabel(missingField)}?
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleProposalFlowMissingFieldResponse(
+                                    latestProposalFlowPrimaryDraftKey,
+                                    latestProposalFlowPrimaryDraft,
+                                    latestProposalFlowDraftValues,
+                                    missingField,
+                                    true
+                                  )
+                                }
+                                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                              >
+                                Yes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleProposalFlowMissingFieldResponse(
+                                    latestProposalFlowPrimaryDraftKey,
+                                    latestProposalFlowPrimaryDraft,
+                                    latestProposalFlowDraftValues,
+                                    missingField,
+                                    false
+                                  )
+                                }
+                                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                No
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {reviewState.changeDecision === 'no' &&
+                          missingField &&
+                          reviewState.editingField === missingField && (
+                            <div className="space-y-3">
+                              <p className="text-base font-medium">
+                                Add {getProposalFlowPromptLabel(missingField)}.
+                              </p>
+                              {missingField === 'time' ? (
+                                isSejourDraft ? (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                      type="text"
+                                      value={latestProposalFlowDraftValues.startTime}
+                                      onChange={(e) =>
+                                        updateProposalFlowDraftField(
+                                          latestProposalFlowPrimaryDraftKey,
+                                          latestProposalFlowPrimaryDraft,
+                                          'startTime',
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="Start time"
+                                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={latestProposalFlowDraftValues.endTime}
+                                      onChange={(e) =>
+                                        updateProposalFlowDraftField(
+                                          latestProposalFlowPrimaryDraftKey,
+                                          latestProposalFlowPrimaryDraft,
+                                          'endTime',
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="End time"
+                                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                    />
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={latestProposalFlowDraftValues.times}
+                                    onChange={(e) =>
+                                      updateProposalFlowDraftField(
+                                        latestProposalFlowPrimaryDraftKey,
+                                        latestProposalFlowPrimaryDraft,
+                                        'times',
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Time"
+                                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                  />
+                                )
+                              ) : missingField === 'place' ? (
+                                <input
+                                  type="text"
+                                  value={latestProposalFlowDraftValues.place}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      latestProposalFlowPrimaryDraftKey,
+                                      latestProposalFlowPrimaryDraft,
+                                      'place',
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Place"
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                />
+                              ) : (
+                                <textarea
+                                  value={latestProposalFlowDraftValues.comments}
+                                  onChange={(e) =>
+                                    updateProposalFlowDraftField(
+                                      latestProposalFlowPrimaryDraftKey,
+                                      latestProposalFlowPrimaryDraft,
+                                      'comments',
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={3}
+                                  placeholder="Notes"
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleProposalFlowMissingFieldSaved(
+                                    latestProposalFlowPrimaryDraftKey,
+                                    latestProposalFlowPrimaryDraft,
+                                    { ...latestProposalFlowDraftValues },
+                                    missingField
+                                  )
+                                }
+                                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
+              {false && messages.length > 0 && (
                 <div className="space-y-2">
                   {messages.map((message) => {
                     const draftProposal = actionProposalsByMessageId[message.id];
@@ -1561,7 +2113,7 @@ export function AiAssistantPanel({
                     <button
                       type="button"
                       onClick={() =>
-                        handleProposeFromDraft(
+                        handleProposalFlowConfirm(
                           latestProposalFlowActionMessageId,
                           latestProposalFlowPrimaryDraftKey,
                           latestProposalFlowActionProposal,
@@ -1591,13 +2143,6 @@ export function AiAssistantPanel({
                     Cancel
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={onProposalFlowGoActivities}
-                  className="rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  Activities
-                </button>
               </div>
             </div>
           </div>

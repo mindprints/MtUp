@@ -127,6 +127,15 @@ All users have the password: `password`
 - [ ] Add richer alternative voting and narrowing UX
 - [ ] Add audit-grade logs for AI-assisted proposal actions
 
+## Update: March 14, 2026
+
+- Refined the Snooky `Propose` screen into a summary-first confirmation flow instead of a raw chat transcript.
+- Removed the echoed user prompt, removed legacy assistant output for proposal mode, and removed metadata pills under the Snooky summary.
+- Reworked Snooky so the main proposal sentence rewrites live as the user adds or edits time, place, and notes.
+- Added guided follow-up prompts so if key details are missing, Snooky asks one-by-one whether the user wants to add them.
+- Added a second confirmation pass after edits: clicking `Confirm` after making changes reopens the review question before proposal creation.
+- Cleaned up the proposal screen chrome by removing the old blur artifact behind the `Ask Snooky` pill and removing the bottom `Activities` button.
+
 ## Stage 2 Docs
 
 - `docs/handoff-2026-03-12.md`

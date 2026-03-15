@@ -5,11 +5,12 @@ import { ProposeScreen } from './ProposeScreen';
 import { ResolverScreen } from './ResolverScreen';
 import { AdminDashboard } from './AdminDashboard';
 import { SettingsScreen } from './SettingsScreen';
+import { SnookyDeskScreen } from './SnookyDeskScreen';
 import { useAuth } from '@/lib/AuthContext';
 import { useProposals } from '@/lib/ProposalContext';
 import { runtimeConfig } from '@/lib/runtimeConfig';
 
-type ExperienceTab = 'activities' | 'settings' | 'propose' | 'resolver' | 'admin' | 'workspace';
+type ExperienceTab = 'activities' | 'settings' | 'propose' | 'resolver' | 'briefing' | 'admin' | 'workspace';
 
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
@@ -39,7 +40,7 @@ function findActiveVerticalScrollTarget(
 }
 
 function readInitialTab(aiEnabled: boolean): ExperienceTab {
-  return aiEnabled ? 'activities' : 'workspace';
+  return aiEnabled ? 'propose' : 'workspace';
 }
 
 export function PrimaryExperience() {
@@ -54,11 +55,11 @@ export function PrimaryExperience() {
   const availableTabs = useMemo<ExperienceTab[]>(() => {
     if (runtimeConfig.aiAssistantEnabled) {
       return user?.isAdmin
-        ? ['settings', 'activities', 'propose', 'resolver', 'admin']
-        : ['settings', 'activities', 'propose', 'resolver'];
+        ? ['propose', 'activities', 'resolver', 'settings', 'briefing', 'admin']
+        : ['propose', 'activities', 'resolver', 'settings', 'briefing'];
     }
 
-    return user?.isAdmin ? ['settings', 'workspace', 'resolver', 'admin'] : ['settings', 'workspace', 'resolver'];
+    return user?.isAdmin ? ['workspace', 'resolver', 'settings', 'admin'] : ['workspace', 'resolver', 'settings'];
   }, [user?.isAdmin]);
 
   if (!user) return null;
@@ -138,6 +139,36 @@ export function PrimaryExperience() {
     };
   }, [activeTab, availableTabs]);
 
+  useEffect(() => {
+    const pager = pagerRef.current;
+    if (!pager) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+        return;
+      }
+
+      const currentIndex = availableTabs.indexOf(activeTab);
+      if (currentIndex === -1) return;
+
+      const scrollTarget = findActiveVerticalScrollTarget(pager, currentIndex);
+      if (!scrollTarget || scrollTarget.scrollHeight <= scrollTarget.clientHeight + 8) {
+        return;
+      }
+
+      event.preventDefault();
+      scrollTarget.scrollBy({
+        top: event.deltaY,
+        behavior: 'auto',
+      });
+    };
+
+    pager.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      pager.removeEventListener('wheel', handleWheel);
+    };
+  }, [activeTab, availableTabs]);
+
   const activitiesScreen = (
     <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white p-2 dark:border dark:border-slate-800 dark:bg-slate-900">
       {runtimeConfig.aiAssistantEnabled ? (
@@ -154,11 +185,7 @@ export function PrimaryExperience() {
   );
 
   const proposeScreen = (
-    <ProposeScreen
-      userId={user.id}
-      activeGroupId={activeGroupId}
-      onGoActivities={() => setActiveTab('activities')}
-    />
+    <ProposeScreen userId={user.id} activeGroupId={activeGroupId} />
   );
 
   const settingsScreen = <SettingsScreen />;
@@ -168,6 +195,8 @@ export function PrimaryExperience() {
       <ResolverScreen />
     </div>
   );
+
+  const briefingScreen = <SnookyDeskScreen />;
 
   const adminScreen = <AdminDashboard onGoActivities={() => setActiveTab('activities')} />;
 
@@ -182,6 +211,7 @@ export function PrimaryExperience() {
     if (tab === 'settings') return settingsScreen;
     if (tab === 'propose') return proposeScreen;
     if (tab === 'resolver') return resolverScreen;
+    if (tab === 'briefing') return briefingScreen;
     if (tab === 'admin') return adminScreen;
     return workspaceScreen;
   };
